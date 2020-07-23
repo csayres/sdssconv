@@ -1,0 +1,10 @@
+APO
+
+Nominal Thickness Value: 84.999 mm from lens 3
+Image plane radius of curvature: -9199.323 mm
+
+Dupont
+
+Distance from wok surface = program output value [mm] - .037 mm (negative is towards telescope from wok, positive is away from telescope from wok)
+Image plane radius of curvature: -8800.00 mm
+2nd order term: -1.234E-6

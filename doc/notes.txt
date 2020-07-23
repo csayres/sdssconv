@@ -1,0 +1,21 @@
+re: sharing models:
+Hi Conor,
+
+Chris Brandon is putting the Wok models into the PDM system for you.
+
+Here's the equations from Solidworks used for the focal surface curvatures (The Woks are offset 143mm below the focal surface.  I generated the Woks by creating the focal surface with the equation and then offsetting the surface by 143)
+
+DUPONT TELESCOPE FOCAL SURFACE (0.000113636363636*x^2)/(1+sqrt(1-0.0000000129132231405*x^2))+(0.0000012336318*x^2)
+
+SLOAN TELESCOPE FOCAL SURFACE (9199.322517101522-(((9199.322517101522)^2)-x^2)^.5)
+
+I've attached a pdf showing the constructions sketch for the Sloan Wok as an example.  Dupont is the same except I use the DuPont equation for the curve.
+
+Thanks,
+Mark
+
+
+
+https://platedesign.sdss.org/runs/2020.01.c.apogee2s.south/plateLines-12598.html2.5-meters
+https://drive.google.com/drive/folders/1mVJ_UASiKZ7pdUES2yCfJYVL9i-ZBmAC
+

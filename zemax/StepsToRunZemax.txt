@@ -1,0 +1,14 @@
+Procedure so far:
+
+
+change wavelength value (units of microns)
+change y-field value (units of degrees)
+run Optimize
+extract 'thickness' value for Surface 14 (z-location)
+extract 'value' from Operand 82 (CEHY y-centroid)
+
+optional right now: extract Huygens PSF text values
+
+
+Unknown Procedure:
+vary thickness (z-through focus) and extract operand value (centroid y-value) - i'm not sure how to do this without running the merit function optimization which would 'auto focus' the image.
