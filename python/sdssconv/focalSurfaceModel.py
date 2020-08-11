@@ -7,7 +7,8 @@ import os
 from fieldCoords import fieldAngle2Cart, cart2Sph
 
 GFA_loc = 329 # mm
-GFA_size = 13.5/1000*2048 # mm
+# diagonal
+GFA_size = numpy.sqrt(2*(13.5/1000*2048)**2) # mm
 GFA_max_r = GFA_loc + 0.5*GFA_size
 SMALL_NUM = 1e-12 # epsilon for computational accuracy
 MICRON_PER_MM = 1000
@@ -62,7 +63,7 @@ def loadZemaxData(filePath):
         focus.
     6. yCentroid (mm): output y location of centroid on focal surface
     7. xCentroid (mm): output x location of centroid on focal surface
-    8. DENC (um): Diameter of encircled energy at 80.2 percent (roughly a FWHM of a Gaussian)
+    8. GENC (um): Diameter of encircled energy at 80.2 percent (roughly a FWHM of a Gaussian)
     9. SSRMS (mm): Radial spot size RMS, another measure of PSF spread
 
     notes on input field angles from zemax manual:
@@ -98,7 +99,7 @@ def loadZemaxData(filePath):
         "zCentroid",  # mm, increases toward sky, 0 at primary mirror vertex
         "yCentroid",  # mm -DEC due to 180 deg image rotation
         "xCentroid",  # mm -RA due to 180 degree image rotation
-        "DENC",  # micron (fwhm proxy)
+        "GENC",  # micron (fwhm proxy)
         "SSRMS"  # micron (fwhm proxy)
     ]
     df = pd.read_csv(filePath, names=names, skiprows=0, comment="#")
@@ -138,16 +139,20 @@ def loadZemaxData(filePath):
     df["waveCat"] = waveCat
 
     # add spherical coords from xyFields
-    phiField = []
-    thetaField = []
-    # _tf = []
-    for xField, yField in zip(df["xField"], df["yField"]):
-        _cartXYZ = fieldAngle2Cart([xField, yField])
-        _phi, _theta = cart2Sph(_cartXYZ)
-        phiField.append(_phi)
-        thetaField.append(_theta)
-        # if xField == 0:
-        #     _tf.append(_theta)
+    # phiField = []
+    # thetaField = []
+    # # _tf = []
+    # for xField, yField in zip(df["xField"], df["yField"]):
+    #     _x, _y, _z = fieldAngle2Cart(xField, yField)
+    #     _phi, _theta = cart2Sph(_x, _y, _z)
+    #     phiField.append(_phi)
+    #     thetaField.append(_theta)
+    #     # if xField == 0:
+    #     #     _tf.append(_theta)
+
+    _x, _y, _z = fieldAngle2Cart(df["xField"].to_numpy(), df["yField"].to_numpy())
+    thetaField, phiField = cart2Sph(_x, _y, _z)
+
     df["phiField"] = phiField
     df["thetaField"] = thetaField
 
@@ -368,8 +373,8 @@ def plotRadialFocalSurface(figname, apModel, bossModel, site):
 
     # plot best fit sphere
 
-    ax.set_xlabel("centroid r (mm)")
-    ax.set_ylabel("centroid z (mm)")
+    ax.set_xlabel("rCentroid (mm)")
+    ax.set_ylabel("zCentroid (mm)")
     ax.set_title("%s %s radial focal surface fits"%(site, figname))
     ax.legend()
     plt.savefig("%s_%s_radFocSurf.png"%(figname, site), dpi=350)
@@ -380,22 +385,49 @@ def plotXYFocalSurface(figname, apModel, bossModel, site):
     xGFA = GFA_max_r*numpy.cos(thetas)
     yGFA = GFA_max_r*numpy.sin(thetas)
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=(13, 6))
-    fig.suptitle(site + " focal surface")
+    fig.suptitle("%s %s focal surface"%(site, figname))
     sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=apModel.df, linewidth=0, alpha=0.5, ax=ax1)
-    ax1.set_ylabel("y centroid (mm)")
-    ax1.set_xlabel("x centroid (mm)")
+    ax1.set_ylabel("yCentroid (mm)")
+    ax1.set_xlabel("xCentroid (mm)")
     ax1.axis("equal")
     ax1.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    ax1.legend()
     ax1.set_title("Apogee")
 
-    sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=apModel.df, linewidth=0, alpha=0.5, ax=ax2)
-    ax2.set_ylabel("y centroid (mm)")
-    ax2.set_xlabel("x centroid (mm)")
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=bossModel.df, linewidth=0, alpha=0.5, ax=ax2)
+    ax2.set_ylabel("yCentroid (mm)")
+    ax2.set_xlabel("xCentroid (mm)")
     ax2.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    ax2.legend()
     ax2.axis("equal")
     ax2.set_title("BOSS")
 
     plt.savefig("%s_%s_xyFocSurf.png"%(figname, site), dpi=350)
+    plt.close()
+
+def plotXYFocalSurfaceResid(figname, apModel, bossModel, site):
+    thetas = numpy.linspace(0, numpy.pi*2, 1000)
+    xGFA = GFA_max_r*numpy.cos(thetas)
+    yGFA = GFA_max_r*numpy.sin(thetas)
+    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(13, 6))
+    fig.suptitle("%s %s focal surface spherical residuals"%(site, figname))
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=apModel.df, linewidth=0, alpha=0.5, ax=ax1)
+    ax1.set_ylabel("yCentroid (mm)")
+    ax1.set_xlabel("xCentroid (mm)")
+    ax1.axis("equal")
+    ax1.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    ax1.legend()
+    ax1.set_title("Apogee")
+
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=bossModel.df, linewidth=0, alpha=0.5, ax=ax2)
+    ax2.set_ylabel("yCentroid (mm)")
+    ax2.set_xlabel("xCentroid (mm)")
+    ax2.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    ax2.legend()
+    ax2.axis("equal")
+    ax2.set_title("BOSS")
+
+    plt.savefig("%s_%s_xyFocSurfResid.png"%(figname, site), dpi=350)
     plt.close()
 
 
@@ -413,34 +445,11 @@ def plotRadialFocalSurfaceResid(figname, apModel, bossModel, site):
 
     # plot best fit sphere
 
-    ax.set_xlabel("centroid r (mm)")
-    ax.set_ylabel("z residual (mm)")
+    ax.set_xlabel("rCentroid (mm)")
+    ax.set_ylabel("zResiduals (mm)")
     ax.set_title("%s %s radial focal surface fit residuals"%(site, figname))
     ax.legend()
     plt.savefig("%s_%s_radFocSurfResid.png"%(figname, site), dpi=350)
-    plt.close()
-
-def plotXYFocalSurface(figname, apModel, bossModel, site):
-    thetas = numpy.linspace(0, numpy.pi*2, 1000)
-    xGFA = GFA_max_r*numpy.cos(thetas)
-    yGFA = GFA_max_r*numpy.sin(thetas)
-    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(13, 6))
-    fig.suptitle(site + " focal surface spherical residuals")
-    sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=apModel.df, linewidth=0, alpha=0.5, ax=ax1)
-    ax1.set_ylabel("y centroid (mm)")
-    ax1.set_xlabel("x centroid (mm)")
-    ax1.axis("equal")
-    ax1.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
-    ax1.set_title("Apogee")
-
-    sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=apModel.df, linewidth=0, alpha=0.5, ax=ax2)
-    ax2.set_ylabel("y centroid (mm)")
-    ax2.set_xlabel("x centroid (mm)")
-    ax2.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
-    ax2.axis("equal")
-    ax2.set_title("BOSS")
-
-    plt.savefig("%s_%s_xyFocSurfResid.png"%(figname, site), dpi=350)
     plt.close()
 
 
@@ -477,18 +486,19 @@ def plotDistortionStack(figname, apModel, bossModel, site):
         ax[0].legend()
         ax[1].legend()
         if pltInd == len(axs)-1:
-            ax[0].set_xlabel("centroid r (mm)")
-            ax[1].set_xlabel("centroid r (mm)")
+            ax[0].set_xlabel("rCentroid (mm)")
+            ax[1].set_xlabel("rCentroid (mm)")
         else:
             ax[0].xaxis.set_ticklabels([])
             ax[1].xaxis.set_ticklabels([])
         if pltInd == int(len(axs)/2):
-            ax[0].set_ylabel("distort residual (um)")
-        # ax[0].set_ylabel("centroid r (mm)")
+            ax[0].set_ylabel("distortResid (um)")
+        # ax[0].set_ylabel("rCentroid (mm)")
         pltInd += 1
-    fig.suptitle(obs + "\nodd polynomial distortion fit residuals")
+    fig.suptitle("%s %s\nodd polynomial distortion fit residuals"%(site, figname))
     plt.savefig("%s_%s_polyOrders.png"%(figname, site), dpi=350)
     plt.close()
+
 
 def plotXYDistortionResiduals(figname, apModel, bossModel, site):
     apR, apDR = apModel.df[["rCentroid", "distortResid"]].to_numpy().T
@@ -500,17 +510,17 @@ def plotXYDistortionResiduals(figname, apModel, bossModel, site):
     xGFA = GFA_max_r*numpy.cos(thetas)
     yGFA = GFA_max_r*numpy.sin(thetas)
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=(13, 6))
-    fig.suptitle(site + " radial distortion residuals (um)\nApogee RMS: %.2e -- Boss RMS: %.2e\norders: %s"%(apRMS, bossRMS, apModel.powers))
+    fig.suptitle("%s %s radial distortion residuals (um)\nApogee RMS: %.2e -- Boss RMS: %.2e\norders: %s"%(site, figname, apRMS, bossRMS, apModel.powers))
     sns.scatterplot(x="xCentroid", y="yCentroid", hue="distortResid", data=apModel.df, linewidth=0, alpha=0.5, ax=ax1)
-    ax1.set_ylabel("y centroid (mm)")
-    ax1.set_xlabel("x centroid (mm)")
+    ax1.set_ylabel("yCentroid (mm)")
+    ax1.set_xlabel("xCentroid (mm)")
     ax1.axis("equal")
     ax1.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
     ax1.set_title("Apogee")
 
-    sns.scatterplot(x="xCentroid", y="yCentroid", hue="distortResid", data=apModel.df, linewidth=0, alpha=0.5, ax=ax2)
-    ax2.set_ylabel("y centroid (mm)")
-    ax2.set_xlabel("x centroid (mm)")
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="distortResid", data=bossModel.df, linewidth=0, alpha=0.5, ax=ax2)
+    ax2.set_ylabel("yCentroid (mm)")
+    ax2.set_xlabel("xCentroid (mm)")
     ax2.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
     ax2.axis("equal")
     ax2.set_title("BOSS")
@@ -518,500 +528,85 @@ def plotXYDistortionResiduals(figname, apModel, bossModel, site):
     plt.savefig("%s_%s_xyDistortResid.png"%(figname, site), dpi=350)
     plt.close()
 
+def plotRadFWHM(figname, df, site):
+
+    fig, (ax1, ax2) = plt.subplots(2,1, figsize=(9, 9))
+    fig.suptitle("%s %s"%(figname, site))
+    sns.scatterplot(x="rCentroid", y="SSRMS", hue="waveCat", data=df, ax=ax1, alpha=0.1)
+    sns.scatterplot(x="rCentroid", y="GENC", hue="waveCat", data=df, ax=ax2, alpha=0.1)
+    plt.savefig("%s_%s_fwhm.png"%(figname, site), dpi=350)
+    plt.close()
+
+
+def plotXYFWHM(figname, df, site):
+
+    thetas = numpy.linspace(0, numpy.pi*2, 1000)
+    xGFA = GFA_max_r*numpy.cos(thetas)
+    yGFA = GFA_max_r*numpy.sin(thetas)
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2, figsize=(9,9))
+
+    fig.suptitle("%s %s"%(figname, site))
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="SSRMS", data=df[df["waveCat"] == "Apogee"], linewidth=0, alpha=0.5, ax=ax1)
+    ax1.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="SSRMS", data=df[df["waveCat"] == "BOSS"], linewidth=0, alpha=0.5, ax=ax2)
+    ax2.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="GENC", data=df[df["waveCat"] == "Apogee"], linewidth=0, alpha=0.5, ax=ax3)
+    ax3.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    sns.scatterplot(x="xCentroid", y="yCentroid", hue="GENC", data=df[df["waveCat"] == "BOSS"], linewidth=0, alpha=0.5, ax=ax4)
+    ax4.plot(xGFA, yGFA, '--', color="red", label="GFA edge")
+    ax1.set_title("Apogee")
+    ax2.set_title("Boss")
+    plt.savefig("%s_%s_XYfwhm.png"%(figname, site), dpi=350)
+    plt.close()
+
 
 if __name__ == "__main__":
-    fileBase = os.path.join(os.getenv("SDSSCONV_DIR"), "zemax/Python-Zemax-Files")
+    fileBase = os.path.join(os.getenv("SDSSCONV_DIR"), "data")
 
-    for obs in ["APO", "LCO"]:
-        for sampling in ["dense", "uniform"]:
+    for obs in ["LCO", "APO"]:
+        for sampling in ["uniform"]: #["uniform", "reticle", "dense"]:
             # use dense sampling to fit sphere and distortion
             filename = fileBase + "/" + sampling + obs + ".txt"
             df = loadZemaxData(filename)
+            print(obs, sampling, len(df))
             # remove the GFA wavelength, clutters visualization and doesn't add much
             df = df[df["waveCat"] != "GFA"]
             # truncate the data 2mm beyond the outer edge of the GFA
-            # df = df[df["rCentroid"] < GFA_max_r + 2]
-            df = df[df["rCentroid"] < 300]
+            df = df[df["rCentroid"] < GFA_max_r + 2]
+            # df = df[df["rCentroid"] < 300]
 
             # fit spheres
             sphAp = SphFit(df[df["waveCat"] == "Apogee"])
             sphAp.fitSphere()
+            print("ap points", len(sphAp.df))
             sphAp.computeFocalItems()
             sphBoss = SphFit(df[df["waveCat"] == "BOSS"])
+            print("boss points", len(sphBoss.df))
             sphBoss.fitSphere()
             sphBoss.computeFocalItems()
 
             plotRadialFocalSurface(sampling, sphAp, sphBoss, obs)
             plotRadialFocalSurfaceResid(sampling, sphAp, sphBoss, obs)
             plotDistortionStack(sampling, sphAp, sphBoss, obs)
+            plotRadFWHM(sampling, df, obs)
 
             if sampling == "uniform":
                 if obs == "LCO":
-                    powers = [1,3,5]
+                    powers = [1,3,5,7]
                 else:
-                    powers = [1,3,5,9]
+                    powers = [1,3,5,7,9]
                 sphAp.fitDistortion(powers)
+                print("%s apogee sph r=%i b=%i"%(obs, int(sphAp.r_fit), int(sphAp.b_fit)))
+                print("%s apogee coeffs %s"%(obs, ",".join(["%.4e"%x for x in sphAp.distortCoeffs])))
                 sphAp.computeDistortResid()
                 sphBoss.fitDistortion(powers)
+                print("%s boss sph r=%i b=%i"%(obs, int(sphBoss.r_fit), int(sphBoss.b_fit)))
+                print("%s boss coeffs %s"%(obs, ",".join(["%.4e"%x for x in sphBoss.distortCoeffs])))
                 sphBoss.computeDistortResid()
                 plotXYFocalSurface(sampling, sphAp, sphBoss, obs)
+                plotXYFocalSurfaceResid(sampling, sphAp, sphBoss, obs)
                 plotXYDistortionResiduals(sampling, sphAp, sphBoss, obs)
+                plotRadFWHM(sampling, df, obs)
+                plotXYFWHM(sampling, df, obs)
 
-
-
-            continue
-        # fig, (ax1, ax2) = plt.subplots(2,1, figsize=(9,9))
-        # apRMS = numpy.sqrt(numpy.sum(sphAp.df["zResiduals"]**2)/len(sphAp.df["zResiduals"]))*MICRON_PER_MM
-        # bossRMS = numpy.sqrt(numpy.sum(sphBoss.df["zResiduals"]**2)/len(sphBoss.df["zResiduals"]))*MICRON_PER_MM
-        # sns.scatterplot(x="rCentroid", y="zResiduals", data=sphAp.df, linewidth=0, alpha=0.5, ax=ax1)
-        # yPos = 0.5*numpy.max(sphAp.df["zResiduals"])
-        # ax1.text(10, yPos, "dZ RMS: %.2e um"%apRMS)
-        # ax1.set_ylabel("Apogee z residuals (mm)")
-        # ax1.set_title(obs + " z residuals")
-        # sns.scatterplot(x="rCentroid", y="zResiduals", data=sphBoss.df, linewidth=0, alpha=0.5, ax=ax2)
-        # ax2.set_ylabel("Boss z residuals (mm)")
-        # yPos = 0.5*numpy.max(sphBoss.df["zResiduals"])
-        # ax2.text(10, 0, "dZ RMS: %.2e um"%bossRMS)
-        # plt.savefig(obs+"_dense_sphResid.png", dpi=350)
-        # plt.close()
-
-        # fit distortions
-        # distortionTerms = [
-        #     [1, 3],
-        #     [1, 3, 5],
-        #     [1, 3, 5, 7],
-        #     [1, 3, 5, 7, 9],
-        #     [1, 3, 5, 7, 9, 11]
-        # ]
-        # fig, axs = plt.subplots(len(distortionTerms), 2, figsize=(10, 7))
-        # pltInd = 0
-        # bins = numpy.linspace(-1, 1, 50)
-        # for d in distortionTerms:
-        #     sphAp.fitDistortion(d)
-        #     sphBoss.fitDistortion(d)
-        #     sphAp.computeDistortResid()
-        #     sphBoss.computeDistortResid()
-        #     ax = axs[pltInd]
-        #     apHist = numpy.copy(sphAp.df["distortResid"].to_numpy())
-        #     bossHist = numpy.copy(sphBoss.df["distortResid"].to_numpy())
-        #     apRMS = numpy.sqrt(numpy.sum(apHist**2)/len(apHist))
-        #     bossRMS = numpy.sqrt(numpy.sum(bossHist**2)/len(bossHist))
-
-        #     ax[0].hist(apHist, bins, label="RMS: %.2e um"%(apRMS))
-        #     ax[1].hist(bossHist, bins, label="RMS: %.2e um"%(bossRMS))
-
-        #     if pltInd == 0:
-        #         ax[0].set_title("Apogee")
-        #         ax[1].set_title("Boss")
-        #     ax[0].legend()
-        #     ax[1].legend()
-        #     if pltInd != len(axs)-1:
-        #         ax[0].xaxis.set_ticklabels([])
-        #         ax[1].xaxis.set_ticklabels([])
-        #     else:
-        #         ax[0].set_xlabel("distortion residual (um)")
-        #         ax[1].set_xlabel("distortion residual (um)")
-        #     ax[0].set_ylabel("order %i"%d[-1])
-        #     ax[1].yaxis.set_ticklabels([])
-        #     ax[0].yaxis.set_ticklabels([])
-        #     pltInd += 1
-        # fig.suptitle(obs + "\nodd polynomial distortion fit")
-        # plt.savefig(obs+"_polyOrders.png", dpi=350)
-        # plt.close()
-
-        # refit to favorite orders
-        # if obs == "APO":
-        #     apPowers = [1,3,5,7]
-        #     bossPowers = apPowers
-        #     sphAp.fitDistortion(apPowers)
-        #     sphBoss.fitDistortion(bossPowers)
-        # else:
-        #     apPowers = [1,3,5,7,9]
-        #     bossPowers = [1,3,5,7,9]
-        #     sphAp.fitDistortion(apPowers)
-        #     sphBoss.fitDistortion(bossPowers)
-
-        # sphAp.computeDistortResid()
-        # sphBoss.computeDistortResid()
-
-        # apRMS = numpy.sqrt(numpy.sum(sphAp.df["distortResid"]**2)/len(sphAp.df["distortResid"]))
-        # bossRMS = numpy.sqrt(numpy.sum(sphBoss.df["distortResid"]**2)/len(sphBoss.df["distortResid"]))
-
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphAp.df, kind="kde")
-        # g.fig.suptitle(obs + " Apogee order %i\nRMS: %.2e um"%(apPowers[-1], apRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_apogee_selectedPoly_kde.png", dpi=350)
-        # plt.close()
-        # # g.fig.set_size_inches(9,9)
-
-        # # fig, ax = plt.subplots(1,1)
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphBoss.df, kind="kde")
-        # g.fig.suptitle(obs + " BOSS order %i\nRMS: %.2e um"%(bossPowers[-1], bossRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_boss_selectedPoly_kde.png", dpi=350)
-        # plt.close()
-
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphAp.df, alpha=0.5)
-        # g.fig.suptitle(obs + " Apogee order %i\nRMS: %.2e um"%(apPowers[-1], apRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_apogee_selectedPoly_hist.png", dpi=350)
-        # plt.close()
-        # # g.fig.set_size_inches(9,9)
-
-        # # fig, ax = plt.subplots(1,1)
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphBoss.df, alpha=0.5)
-        # g.fig.suptitle(obs + " BOSS order %i\nRMS: %.2e um"%(bossPowers[-1], bossRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_boss_selectedPoly_hist.png", dpi=350)
-        # plt.close()
-
-
-        # ################### check against uniform distributions
-        # #######################################################
-        # sampling = "uniform"
-        # filename = fileBase + "/" + sampling + obs + ".txt"
-        # df = loadZemaxData(filename)
-        # # remove the GFA wavelength, clutters visualization and doesn't add much
-        # df = df[df["waveCat"] != "GFA"]
-        # # truncate the data 2mm beyond the outer edge of the GFA
-        # df = df[df["rCentroid"] < GFA_max_r + 2]
-
-        # fig, ax = plt.subplots(1,1)
-        # sns.lineplot(x="phiField", y="SSRMS", hue="waveCat", data=df, ax=ax)
-        # fig.suptitle(obs)
-        # fig, ax = plt.subplots(1,1)
-        # sns.lineplot(x="phiField", y="DENC", hue="waveCat", data=df, ax=ax)
-        # fig.suptitle(obs)
-
-        # if obs == "APO":
-        #     fig, ax = plt.subplots(1,1)
-        #     sns.scatterplot(x="xField", y="yField", hue="SSRMS", data=df[df["waveCat"]=="BOSS"], ax=ax)
-        #     fig, ax = plt.subplots(1,1)
-        #     sns.scatterplot(x="xField", y="yField", hue="DENC", data=df[df["waveCat"]=="BOSS"], ax=ax)
-
-        # # copy best fit parameters from dense into uniform
-        # sphApUnif = SphFit(df[df["waveCat"] == "Apogee"])
-        # sphApUnif.r_fit = sphAp.r_fit
-        # sphApUnif.b_fit = sphAp.b_fit
-        # sphApUnif.powers = sphAp.powers
-        # sphApUnif.distortCoeffs = sphAp.distortCoeffs
-        # sphApUnif.computeFocalItems()
-        # sphApUnif.computeDistortResid()
-
-
-        # sphBossUnif = SphFit(df[df["waveCat"] == "BOSS"])
-        # sphBossUnif.r_fit = sphBoss.r_fit
-        # sphBossUnif.b_fit = sphBoss.b_fit
-        # sphBossUnif.powers = sphBoss.powers
-        # sphBossUnif.distortCoeffs = sphBoss.distortCoeffs
-        # sphBossUnif.computeFocalItems()
-        # sphBossUnif.computeDistortResid()
-
-        # # visualize fits
-        # fig, ax = plt.subplots(1,1, figsize=(13,7))
-        # # sns.scatterplot(x="rCentroid", y="zCentroid", hue="waveCat", data=df, ax=ax, linewidth=0, alpha=0.5)
-        # sns.lineplot(x="rCentroid", y="zCentroid", hue="waveCat", data=df, ax=ax, alpha=0.5)
-        # ax.axvline(GFA_max_r, linestyle='--', color="red", label="GFA")
-
-        # # plot best fit sphere
-        # rValues = numpy.linspace(0, GFA_max_r, 1000)
-        # zValues = sphAp.predictZ(rValues)
-        # ax.plot(rValues, zValues, ':', color="black", label="Ap fit radius: %i mm"%(int(sphAp.r_fit)))
-
-        # zValues = sphBoss.predictZ(rValues)
-        # ax.plot(rValues, zValues, ':', color="black", label="Boss fit radius: %i mm"%(int(sphBoss.r_fit)))
-
-        # ax.set_xlabel("centroid r (mm)")
-        # ax.set_ylabel("centroid z (mm)")
-        # ax.set_title(obs + " uniform focal plane curvature")
-        # ax.legend()
-        # plt.savefig(obs+"_test_sphFit.png", dpi=350)
-        # plt.close()
-
-        # # plot spherical fit residuals
-        # fig, (ax1, ax2) = plt.subplots(2,1, figsize=(9,9))
-        # apRMS = numpy.sqrt(numpy.sum(sphApUnif.df["zResiduals"]**2)/len(sphApUnif.df["zResiduals"]))*MICRON_PER_MM
-        # bossRMS = numpy.sqrt(numpy.sum(sphBossUnif.df["zResiduals"]**2)/len(sphBossUnif.df["zResiduals"]))*MICRON_PER_MM
-        # sns.scatterplot(x="rCentroid", y="zResiduals", data=sphApUnif.df, linewidth=0, alpha=0.5, ax=ax1)
-        # ax1.set_ylabel("Apogee z residuals (mm)")
-        # ax1.set_title(obs + " uniform z residuals")
-        # sns.scatterplot(x="rCentroid", y="zResiduals", data=sphBossUnif.df, linewidth=0, alpha=0.5, ax=ax2)
-        # ax2.set_ylabel("Boss z residuals (mm)")
-        # yPos = 0.5*numpy.max(sphApUnif.df["zResiduals"])
-        # ax1.text(10, yPos, "dZ RMS: %.2e um"%apRMS)
-        # yPos = 0.5*numpy.max(sphBossUnif.df["zResiduals"])
-        # ax2.text(10, yPos, "dZ RMS: %.2e um"%bossRMS)
-        # plt.savefig(obs+"_test_sphResid.png", dpi=350)
-        # plt.close()
-
-        # # 3D plots
-        # thetas = numpy.linspace(0, numpy.pi*2, 1000)
-        # xGFA = GFA_max_r*numpy.cos(thetas)
-        # yGFA = GFA_max_r*numpy.sin(thetas)
-        # fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2, figsize=(10, 10))
-        # fig.suptitle(obs + " uniform")
-        # sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=sphApUnif.df, linewidth=0, alpha=0.5, ax=ax1)
-        # ax1.set_ylabel("y centroid (mm)")
-        # ax1.set_xlabel("x centroid (mm)")
-        # ax1.plot(xGFA, yGFA, '--', color="red", label="GFA")
-        # ax1.set_title("Apogee")
-
-        # sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=sphBossUnif.df, linewidth=0, alpha=0.5, ax=ax2)
-        # ax2.set_ylabel("y centroid (mm)")
-        # ax2.set_xlabel("x centroid (mm)")
-        # ax2.plot(xGFA, yGFA, '--', color="red", label="GFA")
-        # ax2.set_title("BOSS")
-
-        # # fig, (ax1, ax2) = plt.subplots(1,2, figsize=(15,7))
-        # sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=sphApUnif.df, linewidth=0, alpha=0.5, ax=ax3)
-        # ax3.set_ylabel("y centroid (mm)")
-        # ax3.set_xlabel("x centroid (mm)")
-        # ax3.plot(xGFA, yGFA, '--', color="red", label="GFA")
-        # ax3.set_title("Apogee - sph fit")
-
-        # sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=sphBossUnif.df, linewidth=0, alpha=0.5, ax=ax4)
-        # ax4.set_ylabel("y centroid (mm)")
-        # ax4.set_xlabel("x centroid (mm)")
-        # ax4.plot(xGFA, yGFA, '--', color="red", label="GFA")
-        # ax4.set_title("BOSS - sph fit")
-        # plt.savefig(obs+"_test_sphResid_3D.png", dpi=350)
-        # plt.close()
-
-        # apRMS = numpy.sqrt(numpy.sum(sphApUnif.df["distortResid"]**2)/len(sphApUnif.df["distortResid"]))
-        # bossRMS = numpy.sqrt(numpy.sum(sphBossUnif.df["distortResid"]**2)/len(sphBossUnif.df["distortResid"]))
-
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphApUnif.df, kind="kde")
-        # g.fig.suptitle(obs + " uniform Apogee order %i\nRMS: %.2e um"%(apPowers[-1], apRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_apogee_test_distortResid_kde.png", dpi=350)
-        # plt.close()
-        # # g.fig.set_size_inches(9,9)
-
-        # # fig, ax = plt.subplots(1,1)
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphBossUnif.df, kind="kde")
-        # g.fig.suptitle(obs + " uniform BOSS order %i\nRMS: %.2e um"%(bossPowers[-1], bossRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_boss_test_distortResid_kde.png", dpi=350)
-        # plt.close()
-
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphApUnif.df, alpha=0.5)
-        # g.fig.suptitle(obs + " uniform Apogee order %i\nRMS: %.2e um"%(apPowers[-1], apRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_apogee_test_distortResid_hist.png", dpi=350)
-        # plt.close()
-        # # g.fig.set_size_inches(9,9)
-
-        # # fig, ax = plt.subplots(1,1)
-        # g = sns.jointplot(x="rCentroid", y="distortResid", data=sphBossUnif.df, alpha=0.5)
-        # g.fig.suptitle(obs + " uniform BOSS order %i\nRMS: %.2e um"%(bossPowers[-1], bossRMS))
-        # g.set_axis_labels("rCentroid (mm)", "distortion residual (um)")
-        # plt.savefig(obs+"_boss_test_distortResid_hist.png", dpi=350)
-        # plt.close()
-
-        # import pdb; pdb.set_trace()
-
-
-    plt.show()
-
-
-    def tonsoplots():
-        ###### ANALYSIS #####
-        for obs in ["APO", "LCO"]:
-            for sampling in ["dense", "uniform"]:
-                filename = fileBase + "/" + sampling + obs + ".txt"
-                df = loadZemaxData(filename)
-                # remove the GFA wavelength, clutters visualization and doesn't add much
-                df = df[df["waveCat"] != "GFA"]
-                # truncate the data 2mm beyond the outer edge of the GFA
-                df = df[df["rCentroid"] < GFA_max_r + 2]
-                title = obs + " " + sampling
-                print(title + " len pts", len(df["waveCat"]=="Apogee"))
-
-                thetas = numpy.linspace(0, numpy.pi*2, 1000)
-                xGFA = GFA_max_r*numpy.cos(thetas)
-                yGFA = GFA_max_r*numpy.sin(thetas)
-                # field inputs
-                # fig, ax = plt.subplots(1,1, figsize=(9,9))
-                # sns.scatterplot(x="xField", y="yField", data=df, ax=ax, linewidth=0, alpha=0.5)
-                # ax.set_title(title + " field inputs")
-                # ax.legend()
-                # ax.set_xlabel("xField (deg)")
-                # ax.set_ylabel("yField (deg)")
-
-                # focal plane outputs
-                # fig, ax = plt.subplots(1,1, figsize=(9,9))
-                # sns.scatterplot(x="xCentroid", y="yCentroid", hue="waveCat", data=df, ax=ax, linewidth=0, alpha=0.5)
-                # ax.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                # ax.set_xlabel("centroid x (mm)")
-                # ax.set_ylabel("centroid y (mm)")
-                # ax.set_title(title + " focal plane outputs")
-                # ax.legend()
-
-                # image quality plots
-                # fig, ax = plt.subplots(1,1, figsize=(13,7))
-                # # sns.scatterplot(x="rCentroid", y="zCentroid", hue="waveCat", data=df, ax=ax, linewidth=0, alpha=0.5)
-                # sns.lineplot(x="rCentroid", y="SSRMS", hue="waveCat", data=df, ax=ax, alpha=0.5)
-                # ax.axvline(GFA_max_r, linestyle='--', color="red", label="GFA")
-                # ax.set_xlabel("centroid r (mm)")
-                # ax.set_ylabel("spot size rms (um)")
-                # ax.set_title(title + " image quality")
-                # ax.legend()
-
-                # fig, ax = plt.subplots(1,1, figsize=(13,7))
-                # # sns.scatterplot(x="rCentroid", y="zCentroid", hue="waveCat", data=df, ax=ax, linewidth=0, alpha=0.5)
-                # sns.lineplot(x="rCentroid", y="DENC", hue="waveCat", data=df, ax=ax, alpha=0.5)
-                # ax.axvline(GFA_max_r, linestyle='--', color="red", label="GFA")
-                # ax.set_xlabel("centroid r (mm)")
-                # ax.set_ylabel("diameter encircled energy (um)")
-                # ax.set_title(title + " image quality")
-                # ax.legend()
-
-                # radial plots, focal surface stuff
-                sphAp = SphFit(df[df["waveCat"]=="Apogee"])
-                sphAp.fitSphere()
-                # print(title + " Apogee radius: %.2f"%sphAp.r_fit)
-                sphBoss = SphFit(df[df["waveCat"]=="BOSS"])
-                sphBoss.fitSphere()
-                # print(title + " Boss radius: %.2f"%sphBoss.r_fit)
-                # calculate raduis of focal plane curvature
-                fig, ax = plt.subplots(1,1, figsize=(13,7))
-                # sns.scatterplot(x="rCentroid", y="zCentroid", hue="waveCat", data=df, ax=ax, linewidth=0, alpha=0.5)
-                sns.lineplot(x="rCentroid", y="zCentroid", hue="waveCat", data=df, ax=ax, alpha=0.5)
-                ax.axvline(GFA_max_r, linestyle='--', color="red", label="GFA")
-
-                # plot best fit sphere
-                rValues = numpy.linspace(0, GFA_max_r, 1000)
-                zValues = sphAp.predictZ(rValues)
-                ax.plot(rValues, zValues, ':', color="black", label="Ap fit: %i mm"%(int(sphAp.r_fit)))
-
-                zValues = sphBoss.predictZ(rValues)
-                ax.plot(rValues, zValues, ':', color="black", label="Boss fit: %i mm"%(int(sphBoss.r_fit)))
-
-                ax.set_xlabel("centroid r (mm)")
-                ax.set_ylabel("centroid z (mm)")
-                ax.set_title(title + " focal plane curvature")
-                ax.legend()
-
-                # residual focal surface plots
-                fig, (ax1, ax2) = plt.subplots(2,1, figsize=(9,9))
-                sns.scatterplot(x="rCentroid", y="zResiduals", data=sphAp.df, linewidth=0, alpha=0.5, ax=ax1)
-                ax1.set_ylabel("Apogee z residuals (mm)")
-                ax1.set_title(title + " z residuals")
-                sns.scatterplot(x="rCentroid", y="zResiduals", data=sphBoss.df, linewidth=0, alpha=0.5, ax=ax2)
-                ax2.set_ylabel("Boss z residuals (mm)")
-
-                # 3D plots
-                fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2, figsize=(10, 10))
-                fig.suptitle(title)
-                sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=sphAp.df, linewidth=0, alpha=0.5, ax=ax1)
-                ax1.set_ylabel("y centroid (mm)")
-                ax1.set_xlabel("x centroid (mm)")
-                ax1.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                ax1.set_title("Apogee")
-
-                sns.scatterplot(x="xCentroid", y="yCentroid", hue="zCentroid", data=sphBoss.df, linewidth=0, alpha=0.5, ax=ax2)
-                ax2.set_ylabel("y centroid (mm)")
-                ax2.set_xlabel("x centroid (mm)")
-                ax2.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                ax2.set_title("BOSS")
-
-                # fig, (ax1, ax2) = plt.subplots(1,2, figsize=(15,7))
-                sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=sphAp.df, linewidth=0, alpha=0.5, ax=ax3)
-                ax3.set_ylabel("y centroid (mm)")
-                ax3.set_xlabel("x centroid (mm)")
-                ax3.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                ax3.set_title("Apogee - sph fit")
-
-                sns.scatterplot(x="xCentroid", y="yCentroid", hue="zResiduals", data=sphBoss.df, linewidth=0, alpha=0.5, ax=ax4)
-                ax4.set_ylabel("y centroid (mm)")
-                ax4.set_xlabel("x centroid (mm)")
-                ax4.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                ax4.set_title("BOSS - sph fit")
-
-                # look at radial distortions
-                distortionTerms = [
-                    [1, 3],
-                    [1, 3, 5],
-                    [1, 3, 5, 7],
-                    [1, 3, 5, 7, 9]
-                ]
-                apogeeHists = []
-                bossHists = []
-                apogeeCoeffs = []
-                bossCoeffs = []
-                for d in distortionTerms:
-                    sphAp.fitDistortion(d)
-                    sphBoss.fitDistortion(d)
-                    # fig, (ax1, ax2) = plt.subplots(2,1, figsize=(9,9))
-                    # fig.suptitle(title + "\ndistortion terms %s"%str(d))
-                    # sns.scatterplot(x="rCentroid", y="distortResid", data=sphAp.df, linewidth=0, alpha=0.5, ax=ax1)
-                    # ax1.set_title("Apogee")
-                    # ax1.set_xlabel("")
-                    # ax1.set_ylabel("distortion residuals (micron)")
-                    # sns.scatterplot(x="rCentroid", y="distortResid", data=sphBoss.df, linewidth=0, alpha=0.5, ax=ax2)
-                    # ax2.set_ylabel("distortion residuals (micron)")
-                    # ax2.set_title("BOSS")
-                    apogeeHists.append(numpy.copy(sphAp.df["distortResid"].to_numpy()))
-                    bossHists.append(numpy.copy(sphBoss.df["distortResid"].to_numpy()))
-                    apogeeCoeffs.append(numpy.copy(sphAp.distortCoeffs))
-                    bossCoeffs.append(numpy.copy(sphBoss.distortCoeffs))
-
-
-                    # fig, ax = plt.subplots(1,1, figsize=(9,9))
-                    g = sns.jointplot(x="rCentroid", y="distortResid", data=sphAp.df, kind="kde")
-                    g.fig.suptitle(title + "\nApogee -- %s"%str(d))
-                    # g.fig.set_size_inches(9,9)
-
-                    # fig, ax = plt.subplots(1,1)
-                    g = sns.jointplot(x="rCentroid", y="distortResid", data=sphBoss.df, kind="kde")
-                    g.fig.suptitle(title + "\nBOSS -- %s"%str(d))
-                    # g.fig.set_size_inches(9,9)
-
-                    g = sns.jointplot(x="rCentroid", y="distortResid", data=sphAp.df)
-                    g.fig.suptitle(title + "\nApogee -- %s"%str(d))
-                    # g.fig.set_size_inches(9,9)
-
-                    # fig, ax = plt.subplots(1,1)
-                    g = sns.jointplot(x="rCentroid", y="distortResid", data=sphBoss.df)
-                    g.fig.suptitle(title + "\nBOSS -- %s"%str(d))
-                    # g.fig.set_size_inches(9,9)
-
-                    fig, (ax1, ax2) = plt.subplots(1,2, figsize=(14, 6.5))
-                    fig.suptitle(title + "\ndistortion terms %s"%str(d))
-                    sns.scatterplot(x="xCentroid", y="yCentroid", hue="distortResid", data=sphAp.df, linewidth=0, alpha=0.5, ax=ax1)
-                    ax1.set_ylabel("y centroid (mm)")
-                    ax1.set_xlabel("x centroid (mm)")
-                    ax1.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                    ax1.set_title("Apogee")
-
-                    sns.scatterplot(x="xCentroid", y="yCentroid", hue="distortResid", data=sphBoss.df, linewidth=0, alpha=0.5, ax=ax2)
-                    ax2.set_ylabel("y centroid (mm)")
-                    ax2.set_xlabel("x centroid (mm)")
-                    ax2.plot(xGFA, yGFA, '--', color="red", label="GFA")
-                    ax2.set_title("BOSS")
-
-                fig, axs = plt.subplots(len(distortionTerms), 2, figsize=(13, 7))
-                pltInd = 0
-                bins = numpy.linspace(-2, 2, 50)
-                for ax, apHist, bossHist, apCoeff, bossCoeff in zip(axs, apogeeHists, bossHists, apogeeCoeffs, bossCoeffs):
-                    apRMS = numpy.sqrt(numpy.sum(apHist**2)/len(apHist))
-                    bossRMS = numpy.sqrt(numpy.sum(bossHist**2)/len(bossHist))
-                    ax[0].hist(apHist, bins, label="RMS: %.4e um"%apRMS + "\ncoeffs: "+", ".join(["%.4e"%x for x in apCoeff]))
-                    ax[1].hist(bossHist, bins, label="RMS: %.4e um"%bossRMS + "\ncoeffs: "+", ".join(["%.4e"%x for x in bossCoeff]))
-
-                    if pltInd == 0:
-                        ax[0].set_title("Apogee")
-                        ax[1].set_title("Boss")
-                    ax[0].legend()
-                    ax[1].legend()
-                    if pltInd != len(axs)-1:
-                        ax[0].xaxis.set_ticklabels([])
-                        ax[1].xaxis.set_ticklabels([])
-                    else:
-                        ax[0].set_xlabel("distortResid (um)")
-                        ax[1].set_xlabel("distortResid (um)")
-
-                    pltInd += 1
-                fig.suptitle(title)
-
-        plt.show()
+    # plt.show()

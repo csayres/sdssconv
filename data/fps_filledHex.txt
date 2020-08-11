@@ -16,6 +16,7 @@
 #    500 robots: 300 B+A, 200 BOSS-only
 #     46 Fiducials (associated with the hex array proper, more outside beyond array)
 #    center reserved for fiducial or duPont echelle feed
+#    note: edited by cs to include central hole with assignment = Empty
 #
 # Row   Col     X (mm)  Y (mm)          Assignment
 #
@@ -305,7 +306,7 @@
   0  10  -67.2000    0.0000  BA
   0  11  -44.8000    0.0000  Fiducial
   0  12  -22.4000    0.0000  BA
-#  0  13    0.0000    0.0000  Fiducial  # at duPont, echelle fiber feed?
+  0  13    0.0000    0.0000  Empty  # at duPont, echelle fiber feed?
   0  14   22.4000    0.0000  BA
   0  15   44.8000    0.0000  Fiducial
   0  16   67.2000    0.0000  BA

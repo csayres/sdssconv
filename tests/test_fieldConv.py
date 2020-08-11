@@ -16,15 +16,15 @@ zs = r * numpy.cos(phis)
 
 def test_phiConversion(verbose=False):
     for fieldAngle in numpy.linspace(-10,10,100):
-        xyz = fieldAngle2Cart([fieldAngle, 0])
-        phi, theta = cart2Sph(xyz)
+        x,y,z = fieldAngle2Cart(fieldAngle, 0)
+        theta, phi = cart2Sph(x,y,z)
         if verbose:
             print(numpy.abs(phi-fieldAngle))
         else:
             assert numpy.abs(phi-numpy.abs(fieldAngle)) < SMALL_NUM
 
-        xyz = fieldAngle2Cart([0, fieldAngle])
-        phi, theta = cart2Sph(xyz)
+        x,y,z = fieldAngle2Cart(0, fieldAngle)
+        theta, phi = cart2Sph(x,y,z)
         if verbose:
             print(numpy.abs(phi-fieldAngle))
         else:
@@ -34,7 +34,7 @@ def test_phiConversion(verbose=False):
 def test_cartField():
     # pick some random points on the unit sphere near the +Z cap
     for theta, phi, x, y, z in zip(thetas, phis, xs, ys, zs):
-        xField, yField = cart2FieldAngle([x, y, z])
+        xField, yField = cart2FieldAngle(x, y, z)
         if theta < numpy.pi / 2 or theta > 3 * numpy.pi / 2:
             assert xField < 0
         else:
@@ -45,7 +45,7 @@ def test_cartField():
         else:
             assert yField > 0
 
-        xSolve, ySolve, zSolve = fieldAngle2Cart([xField, yField])
+        xSolve, ySolve, zSolve = fieldAngle2Cart(xField, yField)
         # print(xSolve - x, ySolve - y, zSolve - z)
 
         assert numpy.abs(xSolve-x) < SMALL_NUM
@@ -65,8 +65,8 @@ def test_cartFieldCycle():
         _z = zs[ind]
         for ii in range(100):
             # print("ii", ii)
-            xField, yField = cart2FieldAngle([_x,_y,_z])
-            _x, _y, _z = fieldAngle2Cart([xField, yField])
+            xField, yField = cart2FieldAngle(_x,_y,_z)
+            _x, _y, _z = fieldAngle2Cart(xField, yField)
             # repeated round trips require extra numerical buffer
             assert numpy.abs(_x-x) < SMALL_NUM
             assert numpy.abs(_y-y) < SMALL_NUM
@@ -86,11 +86,11 @@ def test_sphCartCycle():
         _y = ys[ind]
         _z = zs[ind]
         for ii in range(100):
-            phiTheta = cart2Sph([_x, _y, _z])
+            _theta, _phi = cart2Sph(_x, _y, _z)
             # print("[%.4f, %.4f] == %.5e, %.5e"%(theta, phi, phiTheta[0]-theta, phiTheta[1]-phi))
-            assert numpy.abs(phiTheta[1] - theta) < SMALL_NUM
-            assert numpy.abs(phiTheta[0] - phi) < SMALL_NUM
-            _x, _y, _z = sph2Cart(phiTheta)
+            assert numpy.abs(_theta - theta) < SMALL_NUM
+            assert numpy.abs(_phi - phi) < SMALL_NUM
+            _x, _y, _z = sph2Cart(_theta, _phi)
             assert numpy.abs(_x-x) < SMALL_NUM
             assert numpy.abs(_y-y) < SMALL_NUM
             assert numpy.abs(_z-z) < SMALL_NUM

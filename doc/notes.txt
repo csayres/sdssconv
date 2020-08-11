@@ -7,7 +7,7 @@ Here's the equations from Solidworks used for the focal surface curvatures (The 
 
 DUPONT TELESCOPE FOCAL SURFACE (0.000113636363636*x^2)/(1+sqrt(1-0.0000000129132231405*x^2))+(0.0000012336318*x^2)
 
-SLOAN TELESCOPE FOCAL SURFACE (9199.322517101522-(((9199.322517101522)^2)-x^2)^.5)
+SLOAN TELESCOPE FOCAL SURFACE 9199.322517101522-(((9199.322517101522)^2)-x^2)^.5
 
 I've attached a pdf showing the constructions sketch for the Sloan Wok as an example.  Dupont is the same except I use the DuPont equation for the curve.
 
@@ -18,4 +18,38 @@ Mark
 
 https://platedesign.sdss.org/runs/2020.01.c.apogee2s.south/plateLines-12598.html2.5-meters
 https://drive.google.com/drive/folders/1mVJ_UASiKZ7pdUES2yCfJYVL9i-ZBmAC
+
+email: plugplate tab direction
+
+We don’t know about the plate tab orientation
+
+However, the BOSS slithead you see would the the one that goes into the left-hand BOSS spectrograph on the Sloan telescope when approaching the telescope from the same direction as loading/unloading a plug-plate cartridge, and the electrical panel at right is on the side where there right-hand BOSS slithead would be in a BOSS plate cartridge.
+
+rick
+
+email: plate orientation when installed on telescope
+
+Oh, I see.  It points in the same direction as the light coming from the SP2 slithead.  The tab does not point at one of the slitheads.
+
+So if the tab is at 6 o'clock, the SP1 slithead is at 9 o'clock and the SP2 slithead is at 3 o'clock.
+
+### rotator angles
+LCO 189.5 (roughly 0.5 degree spread)
+
+! position of the center of the rotator in instrument frame (x,y deg)
+Rot_Inst_xy        0.0010            0.0020
+
+! angle from the instrument x axis to the rotator x axis (deg)
+Rot_Inst_ang    -89.89
+
+https://www.apo.nmsu.edu/Telescopes/TCC/InstDataFit.html
+
+Hi Conor,
+The rotator is limited to move between 60 and 300 degrees.
+The rotation is clockwise
+Quoting Povilas "looking to the north the north edge goes to the left..clockwise from the bottom”
+Best,
+Francesco
+
+
 
