@@ -839,7 +839,7 @@ def plotCompiledData():
         )
     plt.xlabel("x")
     plt.ylabel("y")
-
+    plt.savefig("wokNumbers.png", dpi=350)
 
     plt.show()
 

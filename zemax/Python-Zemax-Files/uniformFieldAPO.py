@@ -128,7 +128,6 @@ if __name__ == '__main__':
             f.write("# index (int), wavelength (um), xField (degrees), yField (degrees), z offset (mm, increases towards wok), yCentroid (mm), xCentroid (mm), GENC (um), SSRMS (mm)\n")
         startInd = 0
 
-
     # uniform sampling on a disk
     maxFieldAngle = 1.65**2
     npts = 5000
@@ -159,13 +158,15 @@ if __name__ == '__main__':
         NumOperands = TheMFE.NumberOfOperands
         TheMFE.RemoveOperandsAt(1,NumOperands)
         OptWizard = TheMFE.SEQOptimizationWizard
+        OptWizard.IsAssumeAxialSymmetryUsed = 0
         OptWizard.Data = 1
+        OptWizard.Obscuration = 0.48
         baseTool = CastTo(OptWizard, 'IWizard')
         baseTool.Apply()
 
         # remove the radial symmetry checkbox on wizard
         # this was the way we discovered how to do it.
-        TheMFE.RemoveOperandAt(3)
+        #TheMFE.RemoveOperandAt(3)
 
         # blank operand was necessary too...
         BlankOperand = TheMFE.AddOperand()

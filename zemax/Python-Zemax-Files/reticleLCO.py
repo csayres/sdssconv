@@ -132,7 +132,7 @@ if __name__ == '__main__':
     # uniform sampling on a disk
     maxFieldAngle = 1.1
 
-    fa = numpy.linspace(0,maxFieldAngle,int(maxFieldAngle*3600/2))
+    fa = numpy.linspace(0,maxFieldAngle,int(maxFieldAngle*3600/10))
     fan = -1*fa
     z = numpy.zeros(len(fa))
     x = numpy.array(list(fa)+list(fan)+list(z)+list(z))
@@ -162,13 +162,15 @@ if __name__ == '__main__':
         NumOperands = TheMFE.NumberOfOperands
         TheMFE.RemoveOperandsAt(1,NumOperands)
         OptWizard = TheMFE.SEQOptimizationWizard
+        OptWizard.IsAssumeAxialSymmetryUsed = 0
         OptWizard.Data = 1
+        OptWizard.Obscuration = 0.325
         baseTool = CastTo(OptWizard, 'IWizard')
         baseTool.Apply()
 
         # remove the radial symmetry checkbox on wizard
         # this was the way we discovered how to do it.
-        TheMFE.RemoveOperandAt(3)
+        #TheMFE.RemoveOperandAt(3)
 
         # blank operand was necessary too...
         BlankOperand = TheMFE.AddOperand()
