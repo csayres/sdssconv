@@ -7,61 +7,61 @@ import seaborn as sns
 pd.set_option('display.max_columns', None)
 
 
-def parseEdraw(edrawPath):
-    """Load xyz positions from wok surface model measured (painfully) with
-    edrawings clicks
+# def parseEdraw(edrawPath):
+#     """Load xyz positions from wok surface model measured (painfully) with
+#     edrawings clicks
 
-    mapping from edrawing coord sys to wok coord sys
-    X -> X
-    Y -> Z
-    Z -> -Y
-    """
-    with open(edrawPath) as f:
-        lines = f.readlines()
+#     mapping from edrawing coord sys to wok coord sys
+#     X -> X
+#     Y -> Z
+#     Z -> -Y
+#     """
+#     with open(edrawPath) as f:
+#         lines = f.readlines()
 
-    posXYZ = [] # only top half of positioners are measured
-    dias = []
-    for line in lines:
-        line = line.strip()
-        if line.startswith("#"):
-            # a comment
-            continue
-        line = line.strip("mm")
-        if line.startswith("Diameter: "):
-            dia = float(line.strip("Diameter: "))
-            dia = numpy.around(dia, 2)
-        if line.startswith("X:"):
-            x = float(line.strip("X: "))
-        elif line.startswith("Y: "):
-            z = float(line.strip("Y: "))
-        elif line.startswith("Z: "):
-            y = -1*float(line.strip("Z: "))
-            posXYZ.append([x, y, z])
-            dias.append(dia)
-    dias = numpy.array(dias)
+#     posXYZ = [] # only top half of positioners are measured
+#     dias = []
+#     for line in lines:
+#         line = line.strip()
+#         if line.startswith("#"):
+#             # a comment
+#             continue
+#         line = line.strip("mm")
+#         if line.startswith("Diameter: "):
+#             dia = float(line.strip("Diameter: "))
+#             dia = numpy.around(dia, 2)
+#         if line.startswith("X:"):
+#             x = float(line.strip("X: "))
+#         elif line.startswith("Y: "):
+#             z = float(line.strip("Y: "))
+#         elif line.startswith("Z: "):
+#             y = -1*float(line.strip("Z: "))
+#             posXYZ.append([x, y, z])
+#             dias.append(dia)
+#     dias = numpy.array(dias)
 
-    # reflect the top half (+y) onto lower half (-y)
-    # (I only measured half of the array because its a terrible job
-    # and it must be symmetric about the x axis).
-    topXYZ = numpy.array(posXYZ)
-    bottomXYZ = numpy.copy(topXYZ)
-    # don't duplicate the y=0 row (equator)
-    inds = numpy.argwhere(topXYZ[:,1] > 0)
-    bottomXYZ = bottomXYZ[inds].squeeze()
-    bottomXYZ[:,1] = -1*bottomXYZ[:,1]
-    xyz = numpy.vstack((topXYZ, bottomXYZ))
-    dias = numpy.hstack((dias, dias[inds].squeeze()))
-    r = numpy.sqrt(xyz[:,0]**2 + xyz[:,1]**2)
-    df = pd.DataFrame(
-        {
-            "x": xyz[:,0],
-            "y": xyz[:,1],
-            "z": xyz[:,2],
-            "r": r,
-            "holeDia": numpy.array(dias)
-        }
-    )
-    return df
+#     # reflect the top half (+y) onto lower half (-y)
+#     # (I only measured half of the array because its a terrible job
+#     # and it must be symmetric about the x axis).
+#     topXYZ = numpy.array(posXYZ)
+#     bottomXYZ = numpy.copy(topXYZ)
+#     # don't duplicate the y=0 row (equator)
+#     inds = numpy.argwhere(topXYZ[:,1] > 0)
+#     bottomXYZ = bottomXYZ[inds].squeeze()
+#     bottomXYZ[:,1] = -1*bottomXYZ[:,1]
+#     xyz = numpy.vstack((topXYZ, bottomXYZ))
+#     dias = numpy.hstack((dias, dias[inds].squeeze()))
+#     r = numpy.sqrt(xyz[:,0]**2 + xyz[:,1]**2)
+#     df = pd.DataFrame(
+#         {
+#             "x": xyz[:,0],
+#             "y": xyz[:,1],
+#             "z": xyz[:,2],
+#             "r": r,
+#             "holeDia": numpy.array(dias)
+#         }
+#     )
+#     return df
 
 def parseFilledHex():
     """
@@ -77,8 +77,8 @@ def parseFilledHex():
     xPos = []
     yPos = []
     holeType = []
-    row = []
-    col = []
+    hexRow = []
+    hexCol = []
     with open(gridFile, "r") as f:
         lines = f.readlines()
     for line in lines:
@@ -92,6 +92,8 @@ def parseFilledHex():
         xPos.append(x)
         yPos.append(y)
         holeType.append(fType)
+        hexRow.append(int(row))
+        hexCol.append(int(col))
     xPos = numpy.array(xPos)
     yPos = numpy.array(yPos)
     r = numpy.sqrt(xPos**2 + yPos**2)
@@ -101,8 +103,8 @@ def parseFilledHex():
             "y": yPos,
             "r": r,
             "holeType": holeType,
-            "row": row,
-            "col": col
+            "hexRow": hexRow,
+            "hexCol": hexCol
         }
     )
     return df
@@ -145,6 +147,8 @@ def compileDataIGES():
     wokType = []
     holeType = []
     holeID = []
+    hexRow = []
+    hexCol = []
     # coords from rick's filled hex pattern
     # xFP = []
     # yFP = []
@@ -173,7 +177,7 @@ def compileDataIGES():
 
     _distChecks = []
     _normChecks = []
-    def findHole(xTest, yTest, xPinOff, yPinOff, df, _wokType, _holeType, _holeID):
+    def findHole(xTest, yTest, xPinOff, yPinOff, df, _wokType, _holeType, _holeID, _hexRow, _hexCol):
         xyzTop = df[["x1", "y1", "z1"]].to_numpy() # wok top
         xyzBottom = df[["x2", "y2", "z2"]].to_numpy() # wok bottom
         amin = numpy.argmin((xyzTop[:,0]-xTest)**2 + (xyzTop[:,1]-yTest)**2)
@@ -229,6 +233,8 @@ def compileDataIGES():
         wokType.append(_wokType)
         holeType.append(_holeType)
         holeID.append(_holeID)
+        hexRow.append(_hexRow)
+        hexCol.append(_hexCol)
         # xFP.append(numpy.nan)
         # yFP.append(numpy.nan)
         xWok.append(xyz[0])
@@ -256,6 +262,12 @@ def compileDataIGES():
         xTest = row["x"]
         yTest = row["y"]
         _ht = row["holeType"]
+        _r = row["hexRow"]
+        _c = row["hexCol"]
+        if _r >= 0:
+            _hID = "R+"+str(_r)+"C"+str(_c)
+        else:
+            _hID = "R"+str(_r)+"C"+str(_c)
         # rename hole types from ricks file
         # to be slightly more descriptive
         if _ht == "BA":
@@ -266,25 +278,30 @@ def compileDataIGES():
             # fiducial don't rename it
             ht = _ht
         for wt, df in zip(["LCO", "APO"], [lcoDF, apoDF]):
-            findHole(xTest, yTest, 0, mountHoleSep, df, wt, ht, holeCounter)
+            findHole(xTest, yTest, 0, mountHoleSep, df, wt, ht, _hID, _r, _c)
         holeCounter += 1
 
     # outer fiducial ring search
+    holeCounter = 0
     for theta in outerFidTheta:
+        _hID = "F"+str(holeCounter)
         for wt, df, radius in zip(["LCO", "APO"], [lcoDF, apoDF], [outerFidLCOradius, outerFidAPOradius]):
             xTest = radius*numpy.cos(numpy.radians(theta))
             yTest = radius*numpy.sin(numpy.radians(theta))
-            findHole(xTest, yTest, 0, mountHoleSep, df, wt, "Fiducial", holeCounter)
+            findHole(xTest, yTest, 0, mountHoleSep, df, wt, "Fiducial", _hID, numpy.nan, numpy.nan)
         holeCounter += 1
 
     # GFA hole search
+
+    holeCounter = 0
     for theta in gfaTheta:
+        _hID = "G"+str(holeCounter)
         for wt, df, radius, pinRadius in zip(["LCO", "APO"], [lcoDF, apoDF], [gfaLCOradius, gfaAPOradius], [gfaLCOPinRadius, gfaAPOPinRadius]):
             xTest = radius*numpy.cos(numpy.radians(theta))
             yTest = radius*numpy.sin(numpy.radians(theta))
             xPinOff = xTest - pinRadius*numpy.cos(numpy.radians(theta))
             yPinOff = yTest - pinRadius*numpy.sin(numpy.radians(theta))
-            findHole(xTest, yTest, xPinOff, yPinOff, df, wt, "GFA", holeCounter)
+            findHole(xTest, yTest, xPinOff, yPinOff, df, wt, "GFA", _hID, numpy.nan, numpy.nan)
         holeCounter += 1
 
     # print("max dist", numpy.max(_distChecks))
@@ -295,6 +312,8 @@ def compileDataIGES():
             "wokType": wokType,
             "holeType": holeType,
             "holeID": holeID,
+            "hexRow": hexRow,
+            "hexCol": hexCol,
             "x": xWok,
             "y": yWok,
             "z": zWok,
@@ -325,231 +344,231 @@ def compileDataIGES():
     # rough positions of inner hex pattern
 
 
-def compileDataEdraw():
-    """Compile information from Rick's filled hex coords, and the coords
-    extracted from the solid model hole positions.
+# def compileDataEdraw():
+#     """Compile information from Rick's filled hex coords, and the coords
+#     extracted from the solid model hole positions.
 
-    returns
-    -------
-    result : pd.DataFrame
-        dataframe containing coordinates and directions for all holes in a wok, including type
-        assignments.
-    """
-    fh = parseFilledHex()
-    topLCO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/LCOEdrawExtract.txt"))
-    tlcoxy = topLCO[["x", "y", "z", "holeDia"]].to_numpy()
-    bottomLCO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/LCOEdrawExtractBackside.txt"))
-    blcoxy = bottomLCO[["x", "y", "z", "holeDia"]].to_numpy()
-    topAPO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/APOEdrawExtract.txt"))
-    tapoxy = topAPO[["x", "y", "z", "holeDia"]].to_numpy()
-    bottomAPO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/APOEdrawExtractBackside.txt"))
-    bapoxy = bottomAPO[["x", "y", "z", "holeDia"]].to_numpy()
+#     returns
+#     -------
+#     result : pd.DataFrame
+#         dataframe containing coordinates and directions for all holes in a wok, including type
+#         assignments.
+#     """
+#     fh = parseFilledHex()
+#     topLCO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/LCOEdrawExtract.txt"))
+#     tlcoxy = topLCO[["x", "y", "z", "holeDia"]].to_numpy()
+#     bottomLCO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/LCOEdrawExtractBackside.txt"))
+#     blcoxy = bottomLCO[["x", "y", "z", "holeDia"]].to_numpy()
+#     topAPO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/APOEdrawExtract.txt"))
+#     tapoxy = topAPO[["x", "y", "z", "holeDia"]].to_numpy()
+#     bottomAPO = parseEdraw(os.path.join(os.getenv("SDSSCONV_DIR"), "data/APOEdrawExtractBackside.txt"))
+#     bapoxy = bottomAPO[["x", "y", "z", "holeDia"]].to_numpy()
 
-    holeDias = []
-    holeTypes = []
-    wokTypes = []
-    # xy coords in focal surface
-    xFP = []
-    yFP = []
-    # xyz position on wok surface
-    xWok = []
-    yWok = []
-    zWok = []
-    # ijk direction normal to wok surface at point xyz
-    iWok = []
-    jWok = []
-    kWok = []
-    # first the positioner field
-    for index, row in fh.iterrows():
-        x = row["x"]
-        y = row["y"]
-        _holeType = row["holeType"]
-        if _holeType == "BA":
-            holeType = "ApogeeBoss"
-        elif _holeType == "BOSS":
-            holeType = "Boss"
-        else:
-            # fiducial don't rename it
-            holeType = _holeType
+#     holeDias = []
+#     holeTypes = []
+#     wokTypes = []
+#     # xy coords in focal surface
+#     xFP = []
+#     yFP = []
+#     # xyz position on wok surface
+#     xWok = []
+#     yWok = []
+#     zWok = []
+#     # ijk direction normal to wok surface at point xyz
+#     iWok = []
+#     jWok = []
+#     kWok = []
+#     # first the positioner field
+#     for index, row in fh.iterrows():
+#         x = row["x"]
+#         y = row["y"]
+#         _holeType = row["holeType"]
+#         if _holeType == "BA":
+#             holeType = "ApogeeBoss"
+#         elif _holeType == "BOSS":
+#             holeType = "Boss"
+#         else:
+#             # fiducial don't rename it
+#             holeType = _holeType
 
-        aminapo = numpy.argmin((tapoxy[:,0]-x)**2 + (tapoxy[:,1]-y)**2)
-        _aminapo = numpy.argmin((bapoxy[:,0]-x)**2 + (bapoxy[:,1]-y)**2)
+#         aminapo = numpy.argmin((tapoxy[:,0]-x)**2 + (tapoxy[:,1]-y)**2)
+#         _aminapo = numpy.argmin((bapoxy[:,0]-x)**2 + (bapoxy[:,1]-y)**2)
 
-        aminlco = numpy.argmin((tlcoxy[:,0]-x)**2 + (tlcoxy[:,1]-y)**2)
-        _aminlco = numpy.argmin((blcoxy[:,0]-x)**2 + (blcoxy[:,1]-y)**2)
+#         aminlco = numpy.argmin((tlcoxy[:,0]-x)**2 + (tlcoxy[:,1]-y)**2)
+#         _aminlco = numpy.argmin((blcoxy[:,0]-x)**2 + (blcoxy[:,1]-y)**2)
 
-        # apo wok stuff
-        apoWokxyz = tapoxy[aminapo,:3]
-        apoWokijk = apoWokxyz - bapoxy[_aminapo,:3]
-        apoWokijk = apoWokijk / numpy.linalg.norm(apoWokijk)
-        xFP.append(x)
-        yFP.append(y)
-        xWok.append(apoWokxyz[0])
-        yWok.append(apoWokxyz[1])
-        zWok.append(apoWokxyz[2])
-        iWok.append(apoWokijk[0])
-        jWok.append(apoWokijk[1])
-        kWok.append(apoWokijk[2])
-        holeDias.append(tapoxy[aminapo,-1])
-        holeTypes.append(holeType)
-        wokTypes.append("APO")
-
-
-        # lco wok stuff
-        lcoWokxyz = tlcoxy[aminlco,:3]
-        lcoWokijk = lcoWokxyz - blcoxy[_aminlco,:3]
-        lcoWokijk = lcoWokijk / numpy.linalg.norm(lcoWokijk)
-        xFP.append(x)
-        yFP.append(y)
-        xWok.append(lcoWokxyz[0])
-        yWok.append(lcoWokxyz[1])
-        zWok.append(lcoWokxyz[2])
-        iWok.append(lcoWokijk[0])
-        jWok.append(lcoWokijk[1])
-        kWok.append(lcoWokijk[2])
-        holeDias.append(tlcoxy[aminlco,-1])
-        holeTypes.append(holeType)
-        wokTypes.append("LCO")
-
-    # handle central hole (its empty but drilled)
-    aminapo = numpy.argmin((tapoxy[:,0])**2 + (tapoxy[:,1])**2)
-    _aminapo = numpy.argmin((bapoxy[:,0])**2 + (bapoxy[:,1])**2)
-    apoWokxyz = tapoxy[aminapo,:3]
-    apoWokijk = apoWokxyz - bapoxy[_aminapo,:3]
-    apoWokijk = apoWokijk / numpy.linalg.norm(apoWokijk)
-    xFP.append(0)
-    yFP.append(0)
-    xWok.append(apoWokxyz[0])
-    yWok.append(apoWokxyz[1])
-    zWok.append(apoWokxyz[2])
-    iWok.append(apoWokijk[0])
-    jWok.append(apoWokijk[1])
-    kWok.append(apoWokijk[2])
-    holeDias.append(tapoxy[aminapo,-1])
-    holeTypes.append("Empty")
-    wokTypes.append("APO")
-
-    aminlco = numpy.argmin((tlcoxy[:,0])**2 + (tlcoxy[:,1])**2)
-    _aminlco = numpy.argmin((blcoxy[:,0])**2 + (blcoxy[:,1])**2)
-    lcoWokxyz = tlcoxy[aminlco,:3]
-    lcoWokijk = lcoWokxyz - blcoxy[_aminlco,:3]
-    lcoWokijk = lcoWokijk / numpy.linalg.norm(lcoWokijk)
-    xFP.append(0)
-    yFP.append(0)
-    xWok.append(lcoWokxyz[0])
-    yWok.append(lcoWokxyz[1])
-    zWok.append(lcoWokxyz[2])
-    iWok.append(lcoWokijk[0])
-    jWok.append(lcoWokijk[1])
-    kWok.append(lcoWokijk[2])
-    holeDias.append(tlcoxy[aminlco,-1])
-    holeTypes.append("Empty")
-    wokTypes.append("LCO")
-
-    # handle outer fiducial ring and gfa holes
-    t = topLCO[topLCO["r"] > 310]
-    for index, row in t.iterrows():
-        xyz = row[["x", "y", "z"]].to_numpy()
-        # find corresponding bottom hole
-        amin = numpy.argmin((blcoxy[:,0]-xyz[0])**2 + (blcoxy[:,1]-xyz[1])**2)
-
-        lcoWokijk = lcoWokxyz - blcoxy[amin,:3]
-        lcoWokijk = lcoWokijk / numpy.linalg.norm(lcoWokijk)
-        xFP.append(numpy.nan)
-        yFP.append(numpy.nan)
-        xWok.append(xyz[0])
-        yWok.append(xyz[1])
-        zWok.append(xyz[2])
-        iWok.append(lcoWokijk[0])
-        jWok.append(lcoWokijk[1])
-        kWok.append(lcoWokijk[2])
-        holeDia = tlcoxy[amin,-1]
-        holeDias.append(holeDia)
-        if holeDia > 30:
-            holeTypes.append("GFA")
-        else:
-            holeTypes.append("Fiducial")
-        wokTypes.append("LCO")
+#         # apo wok stuff
+#         apoWokxyz = tapoxy[aminapo,:3]
+#         apoWokijk = apoWokxyz - bapoxy[_aminapo,:3]
+#         apoWokijk = apoWokijk / numpy.linalg.norm(apoWokijk)
+#         xFP.append(x)
+#         yFP.append(y)
+#         xWok.append(apoWokxyz[0])
+#         yWok.append(apoWokxyz[1])
+#         zWok.append(apoWokxyz[2])
+#         iWok.append(apoWokijk[0])
+#         jWok.append(apoWokijk[1])
+#         kWok.append(apoWokijk[2])
+#         holeDias.append(tapoxy[aminapo,-1])
+#         holeTypes.append(holeType)
+#         wokTypes.append("APO")
 
 
-    t = topAPO[topAPO["r"] > 310]
-    for index, row in t.iterrows():
-        xyz = row[["x", "y", "z"]].to_numpy()
-        # find corresponding bottom hole
-        amin = numpy.argmin((bapoxy[:,0]-xyz[0])**2 + (bapoxy[:,1]-xyz[1])**2)
+#         # lco wok stuff
+#         lcoWokxyz = tlcoxy[aminlco,:3]
+#         lcoWokijk = lcoWokxyz - blcoxy[_aminlco,:3]
+#         lcoWokijk = lcoWokijk / numpy.linalg.norm(lcoWokijk)
+#         xFP.append(x)
+#         yFP.append(y)
+#         xWok.append(lcoWokxyz[0])
+#         yWok.append(lcoWokxyz[1])
+#         zWok.append(lcoWokxyz[2])
+#         iWok.append(lcoWokijk[0])
+#         jWok.append(lcoWokijk[1])
+#         kWok.append(lcoWokijk[2])
+#         holeDias.append(tlcoxy[aminlco,-1])
+#         holeTypes.append(holeType)
+#         wokTypes.append("LCO")
 
-        apoWokijk = apoWokxyz - bapoxy[amin,:3]
-        apoWokijk = apoWokijk / numpy.linalg.norm(apoWokijk)
-        xFP.append(numpy.nan)
-        yFP.append(numpy.nan)
-        xWok.append(xyz[0])
-        yWok.append(xyz[1])
-        zWok.append(xyz[2])
-        iWok.append(apoWokijk[0])
-        jWok.append(apoWokijk[1])
-        kWok.append(apoWokijk[2])
-        holeDia = tapoxy[amin,-1]
-        holeDias.append(holeDia)
-        if holeDia > 30:
-            holeTypes.append("GFA")
-        else:
-            holeTypes.append("Fiducial")
-        wokTypes.append("APO")
+#     # handle central hole (its empty but drilled)
+#     aminapo = numpy.argmin((tapoxy[:,0])**2 + (tapoxy[:,1])**2)
+#     _aminapo = numpy.argmin((bapoxy[:,0])**2 + (bapoxy[:,1])**2)
+#     apoWokxyz = tapoxy[aminapo,:3]
+#     apoWokijk = apoWokxyz - bapoxy[_aminapo,:3]
+#     apoWokijk = apoWokijk / numpy.linalg.norm(apoWokijk)
+#     xFP.append(0)
+#     yFP.append(0)
+#     xWok.append(apoWokxyz[0])
+#     yWok.append(apoWokxyz[1])
+#     zWok.append(apoWokxyz[2])
+#     iWok.append(apoWokijk[0])
+#     jWok.append(apoWokijk[1])
+#     kWok.append(apoWokijk[2])
+#     holeDias.append(tapoxy[aminapo,-1])
+#     holeTypes.append("Empty")
+#     wokTypes.append("APO")
 
-    xWok = numpy.array(xWok)
-    yWok = numpy.array(yWok)
-    xFP = numpy.array(xFP)
-    yFP = numpy.array(yFP)
+#     aminlco = numpy.argmin((tlcoxy[:,0])**2 + (tlcoxy[:,1])**2)
+#     _aminlco = numpy.argmin((blcoxy[:,0])**2 + (blcoxy[:,1])**2)
+#     lcoWokxyz = tlcoxy[aminlco,:3]
+#     lcoWokijk = lcoWokxyz - blcoxy[_aminlco,:3]
+#     lcoWokijk = lcoWokijk / numpy.linalg.norm(lcoWokijk)
+#     xFP.append(0)
+#     yFP.append(0)
+#     xWok.append(lcoWokxyz[0])
+#     yWok.append(lcoWokxyz[1])
+#     zWok.append(lcoWokxyz[2])
+#     iWok.append(lcoWokijk[0])
+#     jWok.append(lcoWokijk[1])
+#     kWok.append(lcoWokijk[2])
+#     holeDias.append(tlcoxy[aminlco,-1])
+#     holeTypes.append("Empty")
+#     wokTypes.append("LCO")
 
-    rWok = numpy.sqrt(xWok**2 + yWok**2)
-    rFP = numpy.sqrt(xFP**2 + yFP**2)
-    thetaWok = numpy.degrees(numpy.arctan2(yWok, xWok))
-    ind = numpy.argwhere(thetaWok < 0).flatten()
-    thetaWok[ind] = thetaWok[ind] + 360
-    thetaFP = numpy.degrees(numpy.arctan2(yFP, xFP))
-    ind = numpy.argwhere(thetaFP < 0).flatten()
-    thetaFP[ind] = thetaFP[ind] + 360
+#     # handle outer fiducial ring and gfa holes
+#     t = topLCO[topLCO["r"] > 310]
+#     for index, row in t.iterrows():
+#         xyz = row[["x", "y", "z"]].to_numpy()
+#         # find corresponding bottom hole
+#         amin = numpy.argmin((blcoxy[:,0]-xyz[0])**2 + (blcoxy[:,1]-xyz[1])**2)
 
-    df = pd.DataFrame(
-        {
-            "wokType": wokTypes,
-            "holeType": holeTypes,
-            "holeDia": holeDias,
-            "xFP": xFP,
-            "yFP": yFP,
-            "rFP": rFP,
-            "thetaFP": thetaFP,
-            "xWok": xWok,
-            "yWok": yWok,
-            "zWok": zWok,
-            "rWok": rWok,
-            "thetaWok": thetaWok,
-            "iWok": iWok,
-            "jWok": jWok,
-            "kWok": kWok
-        }
-    )
+#         lcoWokijk = lcoWokxyz - blcoxy[amin,:3]
+#         lcoWokijk = lcoWokijk / numpy.linalg.norm(lcoWokijk)
+#         xFP.append(numpy.nan)
+#         yFP.append(numpy.nan)
+#         xWok.append(xyz[0])
+#         yWok.append(xyz[1])
+#         zWok.append(xyz[2])
+#         iWok.append(lcoWokijk[0])
+#         jWok.append(lcoWokijk[1])
+#         kWok.append(lcoWokijk[2])
+#         holeDia = tlcoxy[amin,-1]
+#         holeDias.append(holeDia)
+#         if holeDia > 30:
+#             holeTypes.append("GFA")
+#         else:
+#             holeTypes.append("Fiducial")
+#         wokTypes.append("LCO")
 
-    # determine the z position at 0,0
-    # reference to there
-    _df = df[df["wokType"] == "LCO"]
-    amin = numpy.argmin(_df["rWok"].to_numpy())
-    zLCO = _df["zWok"].to_numpy()[amin]
 
-    _df = df[df["wokType"] == "APO"]
-    amin = numpy.argmin(_df["rWok"].to_numpy())
-    zAPO = _df["zWok"].to_numpy()[amin]
+#     t = topAPO[topAPO["r"] > 310]
+#     for index, row in t.iterrows():
+#         xyz = row[["x", "y", "z"]].to_numpy()
+#         # find corresponding bottom hole
+#         amin = numpy.argmin((bapoxy[:,0]-xyz[0])**2 + (bapoxy[:,1]-xyz[1])**2)
 
-    zOffsets = []
-    for wt in df["wokType"]:
-        if wt == "APO":
-            zOffsets.append(zAPO)
-        else:
-            zOffsets.append(zLCO)
-    zOffsets = numpy.array(zOffsets)
-    df["zWok"] = df["zWok"] - zOffsets
+#         apoWokijk = apoWokxyz - bapoxy[amin,:3]
+#         apoWokijk = apoWokijk / numpy.linalg.norm(apoWokijk)
+#         xFP.append(numpy.nan)
+#         yFP.append(numpy.nan)
+#         xWok.append(xyz[0])
+#         yWok.append(xyz[1])
+#         zWok.append(xyz[2])
+#         iWok.append(apoWokijk[0])
+#         jWok.append(apoWokijk[1])
+#         kWok.append(apoWokijk[2])
+#         holeDia = tapoxy[amin,-1]
+#         holeDias.append(holeDia)
+#         if holeDia > 30:
+#             holeTypes.append("GFA")
+#         else:
+#             holeTypes.append("Fiducial")
+#         wokTypes.append("APO")
 
-    return df
+#     xWok = numpy.array(xWok)
+#     yWok = numpy.array(yWok)
+#     xFP = numpy.array(xFP)
+#     yFP = numpy.array(yFP)
+
+#     rWok = numpy.sqrt(xWok**2 + yWok**2)
+#     rFP = numpy.sqrt(xFP**2 + yFP**2)
+#     thetaWok = numpy.degrees(numpy.arctan2(yWok, xWok))
+#     ind = numpy.argwhere(thetaWok < 0).flatten()
+#     thetaWok[ind] = thetaWok[ind] + 360
+#     thetaFP = numpy.degrees(numpy.arctan2(yFP, xFP))
+#     ind = numpy.argwhere(thetaFP < 0).flatten()
+#     thetaFP[ind] = thetaFP[ind] + 360
+
+#     df = pd.DataFrame(
+#         {
+#             "wokType": wokTypes,
+#             "holeType": holeTypes,
+#             "holeDia": holeDias,
+#             "xFP": xFP,
+#             "yFP": yFP,
+#             "rFP": rFP,
+#             "thetaFP": thetaFP,
+#             "xWok": xWok,
+#             "yWok": yWok,
+#             "zWok": zWok,
+#             "rWok": rWok,
+#             "thetaWok": thetaWok,
+#             "iWok": iWok,
+#             "jWok": jWok,
+#             "kWok": kWok
+#         }
+#     )
+
+#     # determine the z position at 0,0
+#     # reference to there
+#     _df = df[df["wokType"] == "LCO"]
+#     amin = numpy.argmin(_df["rWok"].to_numpy())
+#     zLCO = _df["zWok"].to_numpy()[amin]
+
+#     _df = df[df["wokType"] == "APO"]
+#     amin = numpy.argmin(_df["rWok"].to_numpy())
+#     zAPO = _df["zWok"].to_numpy()[amin]
+
+#     zOffsets = []
+#     for wt in df["wokType"]:
+#         if wt == "APO":
+#             zOffsets.append(zAPO)
+#         else:
+#             zOffsets.append(zLCO)
+#     zOffsets = numpy.array(zOffsets)
+#     df["zWok"] = df["zWok"] - zOffsets
+
+#     return df
 
 
 def wokCurveAPO(r):
@@ -622,162 +641,162 @@ def wokSlopeLCO(r):
     C = 0.0000012336318
     return A*r/numpy.sqrt(1-B*r**2) + 2*C*r
 
-def plotDirectionsEdraw():
-    """Plot the residuals between
-    math derived tangent direction for positioners
-    and model derived direction for positioners
-    """
-    df = compileDataEdraw()
-    _df = df[pd.notna(df["xFP"])]
-    lco = _df[_df["wokType"] == "LCO"]
+# def plotDirectionsEdraw():
+#     """Plot the residuals between
+#     math derived tangent direction for positioners
+#     and model derived direction for positioners
+#     """
+#     df = compileDataEdraw()
+#     _df = df[pd.notna(df["xFP"])]
+#     lco = _df[_df["wokType"] == "LCO"]
 
-    # print(lco[["xFP", "yFP"]])
+#     # print(lco[["xFP", "yFP"]])
 
-    rs = []
-    residuals = []
-    phi1 = []
-    phiSolid = []
-    for index, row in lco.iterrows():
-        rFP = numpy.sqrt(row["xFP"]**2+row["yFP"]**2)
-        # rFP = numpy.sqrt(row["xWok"]**2+row["yWok"]**2)
-        phiFP = 90 - numpy.degrees(numpy.arctan(wokSlopeLCO(rFP)))
-        A = row[["xWok","yWok","zWok"]].to_numpy()
-        B = row[["iWok","jWok","kWok"]].to_numpy()
-        toCen = numpy.array([0-A[0], 0-A[1], 0])
-        toCen = toCen / numpy.linalg.norm(toCen)
-        phiModel = numpy.degrees(numpy.arccos(B.dot(toCen)))
-        phi1.append(phiFP)
-        phiSolid.append(phiModel)
-        rs.append(rFP)
+#     rs = []
+#     residuals = []
+#     phi1 = []
+#     phiSolid = []
+#     for index, row in lco.iterrows():
+#         rFP = numpy.sqrt(row["xFP"]**2+row["yFP"]**2)
+#         # rFP = numpy.sqrt(row["xWok"]**2+row["yWok"]**2)
+#         phiFP = 90 - numpy.degrees(numpy.arctan(wokSlopeLCO(rFP)))
+#         A = row[["xWok","yWok","zWok"]].to_numpy()
+#         B = row[["iWok","jWok","kWok"]].to_numpy()
+#         toCen = numpy.array([0-A[0], 0-A[1], 0])
+#         toCen = toCen / numpy.linalg.norm(toCen)
+#         phiModel = numpy.degrees(numpy.arccos(B.dot(toCen)))
+#         phi1.append(phiFP)
+#         phiSolid.append(phiModel)
+#         rs.append(rFP)
 
-    phiSolid = numpy.array(phiSolid)
-    phi1 = numpy.array(phi1)
+#     phiSolid = numpy.array(phiSolid)
+#     phi1 = numpy.array(phi1)
 
-    print("phi solid", phiSolid)
-    plt.figure()
-    # plt.plot(rs, phi1-phiSolid, label="resid")
-    plt.plot(rs, 143*1000*numpy.sin(numpy.radians((phi1-phiSolid))), label="resid")
-    plt.ylabel("tangential error at tip (um)")
-    plt.xlabel("r (mm)")
-    # plt.plot(rs, phiSolid, label="phiSolid")
-    plt.legend()
-    plt.title("LCO")
-
-
-    apo = _df[_df["wokType"]=="APO"]
-
-    # print(apo[["xFP", "yFP"]])
-
-    rs = []
-    residuals = []
-    phi1 = []
-    phiSolid = []
-    for index, row in apo.iterrows():
-        rFP = numpy.sqrt(row["xFP"]**2+row["yFP"]**2)
-        # rFP = numpy.sqrt(row["xWok"]**2+row["yWok"]**2)
-        phiFP = 90 - numpy.degrees(numpy.arctan(wokSlopeAPO(rFP)))
-        A = row[["xWok","yWok","zWok"]].to_numpy()
-        B = row[["iWok","jWok","kWok"]].to_numpy()
-        toCen = numpy.array([0-A[0], 0-A[1], 0])
-        toCen = toCen / numpy.linalg.norm(toCen)
-        phiModel = numpy.degrees(numpy.arccos(B.dot(toCen)))
-        phi1.append(phiFP)
-        phiSolid.append(phiModel)
-        rs.append(rFP)
-
-    phiSolid = numpy.array(phiSolid)
-    phi1 = numpy.array(phi1)
-
-    print("phi solid", phiSolid)
-    plt.figure()
-    plt.plot(rs, 143*1000*numpy.sin(numpy.radians((phi1-phiSolid))), label="resid")
-    plt.ylabel("tangential error at tip (um)")
-    plt.xlabel("r (mm)")
-    # plt.plot(rs, phiSolid, label="phiSolid")
-    plt.legend()
-    plt.title("APO")
-
-    plt.show()
+#     print("phi solid", phiSolid)
+#     plt.figure()
+#     # plt.plot(rs, phi1-phiSolid, label="resid")
+#     plt.plot(rs, 143*1000*numpy.sin(numpy.radians((phi1-phiSolid))), label="resid")
+#     plt.ylabel("tangential error at tip (um)")
+#     plt.xlabel("r (mm)")
+#     # plt.plot(rs, phiSolid, label="phiSolid")
+#     plt.legend()
+#     plt.title("LCO")
 
 
-def plotHoleTypes():
-    """Plot xyz and hole type information
-    """
-    df = compileDataEdraw()
-    plt.figure(figsize=(10,10))
-    sns.scatterplot(x="xWok", y="yWok", hue="zWok", style="holeType", data=df[df["wokType"]=="LCO"])
-    ax = plt.gca()
-    ax.axis("equal")
-    plt.title("LCO")
+#     apo = _df[_df["wokType"]=="APO"]
 
-    plt.figure(figsize=(10,10))
-    sns.scatterplot(x="xWok", y="yWok", hue="zWok", style="holeType", data=df[df["wokType"]=="APO"])
-    ax = plt.gca()
-    ax.axis("equal")
-    plt.title("APO")
+#     # print(apo[["xFP", "yFP"]])
 
-    plt.figure(figsize=(5,5))
-    sns.scatterplot(x="rWok", y="zWok", data=df[df["wokType"]=="APO"])
-    plt.title("APO")
+#     rs = []
+#     residuals = []
+#     phi1 = []
+#     phiSolid = []
+#     for index, row in apo.iterrows():
+#         rFP = numpy.sqrt(row["xFP"]**2+row["yFP"]**2)
+#         # rFP = numpy.sqrt(row["xWok"]**2+row["yWok"]**2)
+#         phiFP = 90 - numpy.degrees(numpy.arctan(wokSlopeAPO(rFP)))
+#         A = row[["xWok","yWok","zWok"]].to_numpy()
+#         B = row[["iWok","jWok","kWok"]].to_numpy()
+#         toCen = numpy.array([0-A[0], 0-A[1], 0])
+#         toCen = toCen / numpy.linalg.norm(toCen)
+#         phiModel = numpy.degrees(numpy.arccos(B.dot(toCen)))
+#         phi1.append(phiFP)
+#         phiSolid.append(phiModel)
+#         rs.append(rFP)
 
-    plt.figure(figsize=(5,5))
-    sns.scatterplot(x="rWok", y="zWok", data=df[df["wokType"]=="LCO"])
-    plt.title("LCO")
+#     phiSolid = numpy.array(phiSolid)
+#     phi1 = numpy.array(phi1)
 
-    plt.show()
+#     print("phi solid", phiSolid)
+#     plt.figure()
+#     plt.plot(rs, 143*1000*numpy.sin(numpy.radians((phi1-phiSolid))), label="resid")
+#     plt.ylabel("tangential error at tip (um)")
+#     plt.xlabel("r (mm)")
+#     # plt.plot(rs, phiSolid, label="phiSolid")
+#     plt.legend()
+#     plt.title("APO")
 
-
-def plotIGES():
-    # LCO color_number map
-    # 7 = axis
-    # 4, 5 = junk?
-    # 8 = pins and tapped
-    lcoDF = pd.read_csv(os.path.join(os.getenv("SDSSCONV_DIR"), "data/duPontWokHoles.csv"))
-    plt.figure(figsize=(8,8))
-    # lcoDF = lcoDF[lcoDF["color_number"]==5]
-    sns.scatterplot(x="x2", y="y2", hue="z2", style="color_number", data=lcoDF)
-    ax = plt.gca()
-    ax.axis("equal")
-    plt.title("LCO 2")
-
-    plt.figure(figsize=(8,8))
-    # lcoDF = lcoDF[lcoDF["color_number"]==5]
-    sns.scatterplot(x="x1", y="y1", hue="z1", style="color_number", data=lcoDF)
-    ax = plt.gca()
-    ax.axis("equal")
-    plt.title("LCO 1")
+#     plt.show()
 
 
-    # APO color_number map
-    # 7 = axis
-    # 2, 4 = junk?
-    # 8 = pins and tapped
-    apoDF = pd.read_csv(os.path.join(os.getenv("SDSSCONV_DIR"), "data/sloanWokHoles.csv"))
+# def plotHoleTypes():
+#     """Plot xyz and hole type information
+#     """
+#     df = compileDataEdraw()
+#     plt.figure(figsize=(10,10))
+#     sns.scatterplot(x="xWok", y="yWok", hue="zWok", style="holeType", data=df[df["wokType"]=="LCO"])
+#     ax = plt.gca()
+#     ax.axis("equal")
+#     plt.title("LCO")
 
-    plt.figure(figsize=(8,8))
-    # lcoDF = lcoDF[lcoDF["color_number"]==5]
-    sns.scatterplot(x="x2", y="y2", hue="z2", style="color_number", data=apoDF)
-    ax = plt.gca()
-    plt.title("APO 2")
-    ax.axis("equal")
+#     plt.figure(figsize=(10,10))
+#     sns.scatterplot(x="xWok", y="yWok", hue="zWok", style="holeType", data=df[df["wokType"]=="APO"])
+#     ax = plt.gca()
+#     ax.axis("equal")
+#     plt.title("APO")
 
-    plt.figure(figsize=(8,8))
-    # apoDF = apoDF[apoDF["color_number"]==5]
-    sns.scatterplot(x="x1", y="y1", hue="z1", style="color_number", data=apoDF)
-    ax = plt.gca()
-    plt.title("APO 1")
-    ax.axis("equal")
+#     plt.figure(figsize=(5,5))
+#     sns.scatterplot(x="rWok", y="zWok", data=df[df["wokType"]=="APO"])
+#     plt.title("APO")
+
+#     plt.figure(figsize=(5,5))
+#     sns.scatterplot(x="rWok", y="zWok", data=df[df["wokType"]=="LCO"])
+#     plt.title("LCO")
+
+#     plt.show()
 
 
-    plt.figure(figsize=(8,8))
-    sns.scatterplot(x="r2", y="z2", style="color_number", data=lcoDF)
-    plt.title("LCO")
+# def plotIGES():
+#     # LCO color_number map
+#     # 7 = axis
+#     # 4, 5 = junk?
+#     # 8 = pins and tapped
+#     lcoDF = pd.read_csv(os.path.join(os.getenv("SDSSCONV_DIR"), "data/duPontWokHoles.csv"))
+#     plt.figure(figsize=(8,8))
+#     # lcoDF = lcoDF[lcoDF["color_number"]==5]
+#     sns.scatterplot(x="x2", y="y2", hue="z2", style="color_number", data=lcoDF)
+#     ax = plt.gca()
+#     ax.axis("equal")
+#     plt.title("LCO 2")
 
-    plt.figure(figsize=(8,8))
-    sns.scatterplot(x="r2", y="z2", style="color_number", data=apoDF)
-    plt.title("APO")
+#     plt.figure(figsize=(8,8))
+#     # lcoDF = lcoDF[lcoDF["color_number"]==5]
+#     sns.scatterplot(x="x1", y="y1", hue="z1", style="color_number", data=lcoDF)
+#     ax = plt.gca()
+#     ax.axis("equal")
+#     plt.title("LCO 1")
 
-    plt.show()
+
+#     # APO color_number map
+#     # 7 = axis
+#     # 2, 4 = junk?
+#     # 8 = pins and tapped
+#     apoDF = pd.read_csv(os.path.join(os.getenv("SDSSCONV_DIR"), "data/sloanWokHoles.csv"))
+
+#     plt.figure(figsize=(8,8))
+#     # lcoDF = lcoDF[lcoDF["color_number"]==5]
+#     sns.scatterplot(x="x2", y="y2", hue="z2", style="color_number", data=apoDF)
+#     ax = plt.gca()
+#     plt.title("APO 2")
+#     ax.axis("equal")
+
+#     plt.figure(figsize=(8,8))
+#     # apoDF = apoDF[apoDF["color_number"]==5]
+#     sns.scatterplot(x="x1", y="y1", hue="z1", style="color_number", data=apoDF)
+#     ax = plt.gca()
+#     plt.title("APO 1")
+#     ax.axis("equal")
+
+
+#     plt.figure(figsize=(8,8))
+#     sns.scatterplot(x="r2", y="z2", style="color_number", data=lcoDF)
+#     plt.title("LCO")
+
+#     plt.figure(figsize=(8,8))
+#     sns.scatterplot(x="r2", y="z2", style="color_number", data=apoDF)
+#     plt.title("APO")
+
+#     plt.show()
 
     # plt.plot(lcoDF["r1"], lcoDF["z1"], '.', label="LCO 1")
     # plt.plot(lcoDF["r2"], lcoDF["z2"], '.', label="LCO 2")
@@ -808,6 +827,7 @@ def plotCompiledData():
     ax = plt.gca()
     ax.axis("equal")
     plt.title("APO")
+    plt.savefig("holeExtract.png", dpi=350)
 
 
     plt.figure(figsize=(8,8))
@@ -823,7 +843,8 @@ def plotCompiledData():
     ax.axis("equal")
     plt.xlabel("x")
     plt.ylabel('y')
-    plt.title("local direction of $\hat{x}$")
+    plt.title("local direction of $\hat{i}$")
+    plt.savefig("xhats.png", dpi=350)
 
     plt.figure(figsize=(9,9))
     for index, row in apo.iterrows():
@@ -834,7 +855,8 @@ def plotCompiledData():
             str(row["holeID"]),
             horizontalalignment="center",
             verticalalignment="center",
-            fontsize=6,
+            fontsize=3,
+            fontweight='bold',
             color="black",
         )
     plt.xlabel("x")

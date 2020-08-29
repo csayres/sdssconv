@@ -1,9 +1,13 @@
 import pytest
 import numpy
-from sdssconv.fieldCoords import cart2FieldAngle, fieldAngle2Cart, sph2Cart, cart2Sph, SMALL_NUM
+from sdssconv.fieldCoords import cart2FieldAngle, fieldAngle2Cart
+from sdssconv.fieldCoords import sph2Cart, cart2Sph, SMALL_NUM
+from sdssconv.fieldCoords import observedToField, fieldToObserved
 
 numpy.random.seed(0)
 
+APO_latitude = 32.7802
+LCO_latitude = -29.0182
 nPts = 100000
 r = 1 # unit sphere
 thetas = numpy.random.uniform(size=nPts) * 2 * numpy.pi
@@ -95,5 +99,157 @@ def test_sphCartCycle():
             assert numpy.abs(_y-y) < SMALL_NUM
             assert numpy.abs(_z-z) < SMALL_NUM
 
+
+def test_observedToField_APO():
+
+    #### start checks along the meridian
+    ####################################
+    azCen = 180 # (south)
+    altCen = 45
+    azObj = azCen
+    altObj = altCen + 1 # north of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert abs(x) < SMALL_NUM
+    assert y > 0
+
+    azCen = 0 # (north)
+    altCen = 45 # above north star
+    azObj = azCen
+    altObj = altCen + 1 # south of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert abs(x) < SMALL_NUM
+    assert y < 0
+
+    azCen = 0 # (north)
+    altCen = 20 # below north star
+    azObj = azCen
+    altObj = altCen + 1 # north of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert abs(x) < SMALL_NUM
+    assert y > 0
+
+    ##### check field rotation (off meridian)
+    #########################################
+    # remember +x is eastward
+    azCen = 180 + 20 # (south-west)
+    altCen = 45
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert x > 0
+    assert y > 0
+
+    # check field rotation (off meridian)
+    # remember +x is eastward
+    azCen = 180 - 20 # (south-east)
+    altCen = 45
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert x < 0
+    assert y > 0
+
+    # check field rotation (off meridian)
+    # remember +x is eastward
+    azCen = 10 # (slightly east of north)
+    altCen = APO_latitude - 10
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert x < 0
+    assert y > 0
+
+    azCen = 10 # (slightly east of north)
+    altCen = APO_latitude + 10
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, APO_latitude)
+    assert x < 0
+    assert y < 0
+
+
+def test_observedToField_LCO():
+
+    #### start checks along the meridian
+    ####################################
+    azCen = 0 # (north)
+    altCen = 45
+    azObj = azCen
+    altObj = altCen + 1 # south of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert abs(x) < SMALL_NUM
+    assert y < 0
+
+    azCen = 180 # (south)
+    altCen = numpy.abs(LCO_latitude) + 10 # above SCP, (lat is negative!)
+    azObj = azCen
+    altObj = altCen + 1 # north of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert abs(x) < SMALL_NUM
+    assert y > 0
+
+    azCen = 180 # (south)
+    altCen = numpy.abs(LCO_latitude) - 10 # below SCP, (lat is negative!)
+    azObj = azCen
+    altObj = altCen + 1 # north of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert abs(x) < SMALL_NUM
+    assert y < 0
+
+
+    ##### check field rotation (off meridian)
+    #########################################
+    # remember +x is eastward
+    azCen = 20 # (north-east)
+    altCen = 45
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert x < 0
+    assert y < 0
+
+    # remember +x is eastward
+    azCen = 290 # (north-west)
+    altCen = 45
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert x > 0
+    assert y < 0
+
+
+    # # check field rotation (off meridian)
+    # # remember +x is eastward
+    azCen = 170 # (slightly east of south)
+    altCen = LCO_latitude - 10
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert x < 0
+    assert y < 0
+
+    azCen = 190 # (slightly west of south)
+    altCen = LCO_latitude - 10
+    azObj = azCen
+    altObj = altCen + 1 # north-east of field center
+    x, y, z = observedToField(azObj, altObj, azCen, altCen, LCO_latitude)
+    assert x > 0
+    assert y < 0
+
+
+
+def test_observedToFieldCycles():
+    # try a bunch of pointings make sure the round trip works
+    azCens = numpy.random.uniform(0,360, size=30)
+    altCens = numpy.random.uniform(0,90, size=30)
+    for azCen, altCen in zip(azCens, altCens):
+        azCoords = azCen + numpy.random.uniform(-1,1, size=30)
+        altCoords = altCen + numpy.random.uniform(-1,1, size=30)
+        x, y, z = observedToField(azCoords, altCoords, azCen, altCen, APO_latitude)
+        _azCoords, _altCoords = fieldToObserved(x, y, z, azCen, altCen, APO_latitude)
+        assert numpy.max(numpy.abs(azCoords-_azCoords)) < SMALL_NUM
+        assert numpy.max(numpy.abs(altCoords-_altCoords)) < SMALL_NUM
+
+
 if __name__ == "__main__":
-    test_phiConversion(verbose=True)
+    test_observedToField_LCO()

@@ -574,6 +574,10 @@ if __name__ == "__main__":
             # truncate the data 2mm beyond the outer edge of the GFA
             df = df[df["rCentroid"] < GFA_max_r + 2]
             # df = df[df["rCentroid"] < 300]
+            print(obs, sampling)
+            for index, row in list(df.iterrows())[:100]:
+                xf, yf, rCen = row[["xField", "yField", "rCentroid"]]
+                print(rCen, xf, yf, index)
 
             # fit spheres
             sphAp = SphFit(df[df["waveCat"] == "Apogee"])

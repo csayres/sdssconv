@@ -300,7 +300,7 @@ def parallacticAngle(ha, dec, latitude):
     return numpy.degrees(q)
 
 
-def azAlt2Cart(az, alt, azCenter, altCenter, latitude):
+def observedToField(az, alt, azCenter, altCenter, latitude):
     """Convert Az/Alt coordinates to cartesian coords on the
     unit sphere with the z axis aligned with field center (boresight)
 
@@ -407,6 +407,95 @@ def azAlt2Cart(az, alt, azCenter, altCenter, latitude):
         return coords[:, 0], coords[:, 1], coords[:, 2]
 
 
+def fieldToObserved(x, y, z, azCenter, altCenter, latitude):
+    """Convert xyz unit-spherical field coordinates to Az/Alt
+
+    the inverse of observetToField
+
+    Az=0 is north, Az=90 is east
+
+    +x points along +RA, +y points along +Dec, +z points along boresight
+    from telescope toward sky
+
+    Parameters
+    ------------
+    x: scalar or 1D array
+        unit-spherical x field coord
+    y: scalar or 1D array
+        unit-spherical y field coord
+    z: scalara or 1D array
+        unit-spherical z coord
+    azCenter: scalar
+        azimuth in degrees, field center
+    altCenter: scalar
+        altitude in degrees, field center
+    latitude: scalar
+        observer latitude in degrees, positive for north
+
+    Returns
+    --------
+    result: list
+        az, alt.  Az=0 is north, Az=90 is east
+    """
+    # note this is basically cut and paste from
+    # observedToField with rotations inverted
+    ha, dec = azAlt2HaDec(azCenter, altCenter, latitude)
+    q = parallacticAngle(ha, dec, latitude)
+    cosQ = numpy.cos(numpy.radians(-1*q))
+    sinQ = numpy.sin(numpy.radians(-1*q))
+    rotQ = numpy.array([
+        [ cosQ, sinQ, 0],
+        [-sinQ, cosQ, 0],
+        [    0,    0, 1]
+    ])
+    coords = numpy.array([x,y,z]).T
+    coords = rotQ.dot(coords.T).T
+
+
+    sinPhi = numpy.sin(-1*numpy.radians(90-altCenter))
+    cosPhi = numpy.cos(-1*numpy.radians(90-altCenter))
+    rotPhi = numpy.array([
+        [1,       0,      0],
+        [0,  cosPhi, sinPhi],
+        [0, -sinPhi, cosPhi]
+    ])
+    coords = rotPhi.dot(coords.T).T
+
+    sinTheta = numpy.sin(-1*numpy.radians(90-azCenter))
+    cosTheta = numpy.cos(-1*numpy.radians(90-azCenter))
+    rotTheta = numpy.array([
+        [ cosTheta, sinTheta, 0],
+        [-sinTheta, cosTheta, 0],
+        [        0,        0, 1]
+    ])
+
+    coords = rotTheta.dot(coords.T).T
+
+    x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+    # thetaCen = -1*azCenter
+    # phiCen = 90 - altCenter
+    theta, phi = cart2Sph(x, y, z)
+
+    # convert sph theta, phi to az, alt
+    az = -1 * theta
+    alt = 90 - phi
+
+    if len(az) == 1:
+        #single coord fed in
+        az, alt = az[0], alt[0]
+        if az < 0:
+            az += 360
+        if az >= 360:
+            az -= 360
+        return az, alt
+    else:
+        # multiple coords fed in
+        # return arrays instead
+        inds = numpy.argwhere(az < 0)
+        az[inds] = az[inds] + 360
+        inds = numpy.argwhere(az >= 360)
+        az[inds] = az[inds] - 360
+        return az, alt
 
 # def cart2AzAlt(x, y, z, azAltCen, latitude):
 #     """Convert field xyz coordinates on the unit sphere to azAlt coords
@@ -499,14 +588,14 @@ if __name__ == "__main__":
     # plt.xlabel("-x")
     # plt.ylabel("y")
 
-    x, y, z = azAlt2Cart(azAlt[:,0], azAlt[:,1], azCen, altCen, latitude)
+    x, y, z = observedToField(azAlt[:,0], azAlt[:,1], azCen, altCen, latitude)
     plt.figure()
     plt.plot(x*-1, y, 'o') # plot x vs y
     plt.plot(x[-1]*-1, y[-1], 'x') # plot x vs y
     plt.xlabel("-x")
     plt.ylabel("y")
 
-    x,y,z = azAlt2Cart(azAlt[1,0], azAlt[1,1], azCen, altCen, latitude)
+    x,y,z = observedToField(azAlt[1,0], azAlt[1,1], azCen, altCen, latitude)
     plt.plot(x*-1, y, '+r')
 
     # import pdb; pdb.set_trace()
