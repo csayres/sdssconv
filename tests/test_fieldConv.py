@@ -1,8 +1,10 @@
 import pytest
 import numpy
+import matplotlib.pyplot as plt
 from sdssconv.fieldCoords import cart2FieldAngle, fieldAngle2Cart
 from sdssconv.fieldCoords import sph2Cart, cart2Sph, SMALL_NUM
 from sdssconv.fieldCoords import observedToField, fieldToObserved
+from sdssconv.fieldCoords import focalToField, fieldToFocal, focalPlaneModelDict
 
 numpy.random.seed(0)
 
@@ -196,7 +198,6 @@ def test_observedToField_LCO():
     assert abs(x) < SMALL_NUM
     assert y < 0
 
-
     ##### check field rotation (off meridian)
     #########################################
     # remember +x is eastward
@@ -217,7 +218,6 @@ def test_observedToField_LCO():
     assert x > 0
     assert y < 0
 
-
     # # check field rotation (off meridian)
     # # remember +x is eastward
     azCen = 170 # (slightly east of south)
@@ -237,7 +237,6 @@ def test_observedToField_LCO():
     assert y < 0
 
 
-
 def test_observedToFieldCycles():
     # try a bunch of pointings make sure the round trip works
     azCens = numpy.random.uniform(0,360, size=30)
@@ -251,5 +250,143 @@ def test_observedToFieldCycles():
         assert numpy.max(numpy.abs(altCoords-_altCoords)) < SMALL_NUM
 
 
+def test_fieldToFocal():
+    # test zero field
+    for obs in ["APO", "LCO"]:
+        for waveCat in ["Apogee", "Boss", "GFA"]:
+            x,y,z = 0,0,1
+            # check on axis
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert numpy.abs(_x) < SMALL_NUM
+            assert numpy.abs(_y) < SMALL_NUM
+            # check array on axis
+            x = [0,0,0]
+            y = [0,0,0]
+            z = [1,1,1]
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert numpy.max(numpy.abs(_x)) < SMALL_NUM
+            assert numpy.max(numpy.abs(_y)) < SMALL_NUM
+
+            theta = 0
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert x > 0
+            assert numpy.abs(y) < SMALL_NUM
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _x > 0
+            assert numpy.abs(_y) < SMALL_NUM
+            assert _z < 0
+
+            theta = 90
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert numpy.abs(x) < SMALL_NUM
+            assert y > 0
+            assert z > 0
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _y > 0
+            assert numpy.abs(_x) < SMALL_NUM
+            assert _z < 0
+
+            theta = 180
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert numpy.abs(y) < SMALL_NUM
+            assert x < 0
+            assert z > 0
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _x < 0
+            assert numpy.abs(_y) < SMALL_NUM
+            assert _z < 0
+
+            theta = 270
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert numpy.abs(x) < SMALL_NUM
+            assert y < 0
+            assert z > 0
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _y < 0
+            assert numpy.abs(_x) < SMALL_NUM
+            assert _z < 0
+
+            theta = 300
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert x > 0
+            assert y < 0
+            assert z > 0
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _y < 0
+            assert _x > 0
+            assert _z < 0
+
+            theta = 380
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert x > 0
+            assert y > 0
+            assert z > 0
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _y > 0
+            assert _x > 0
+            assert _z < 0
+
+            theta = -20
+            phi = 0.5 # 0.5 degrees off axis
+            x,y,z = sph2Cart(theta, phi)
+            assert x > 0
+            assert y < 0
+            assert z > 0
+            _x,_y,_z = fieldToFocal(x,y,z,obs,waveCat)
+            assert _y < 0
+            assert _x > 0
+            assert _z < 0
+
+
+def test_focalCurvatureRadii():
+    APO_max_field = 1.5
+    LCO_max_field = 1
+    for waveCat in ["Apogee", "Boss", "GFA"]:
+        for obs, maxField in zip(["APO", "LCO"], [APO_max_field, LCO_max_field]):
+            thetas = numpy.random.uniform(0,360,size=1000)
+            phis = numpy.random.uniform(0,maxField,size=1000)
+            x,y,z = sph2Cart(thetas, phis)
+            fxyz = numpy.array(fieldToFocal(x,y,z,obs,waveCat)).T
+            fxyz[:,2] = fxyz[:,2] + focalPlaneModelDict[obs][waveCat].b # b is z offset to origin
+            radii = numpy.linalg.norm(fxyz, axis=1)
+            expectedRadii = focalPlaneModelDict[obs][waveCat].r
+            assert numpy.max(numpy.abs(radii-expectedRadii))
+
+
+def test_fieldFocalCycle():
+    APO_max_field = 1.5
+    LCO_max_field = 1
+    for waveCat in ["Apogee", "Boss", "GFA"]:
+        for obs, maxField in zip(["APO", "LCO"], [APO_max_field, LCO_max_field]):
+            thetas = numpy.random.uniform(0,360,size=10000)
+            phis = numpy.random.uniform(0,maxField,size=10000)
+            x,y,z = sph2Cart(thetas, phis)
+            mag = numpy.linalg.norm(numpy.array([x,y,z]), axis=0)
+            assert numpy.sum(numpy.abs(mag-1)) < SMALL_NUM
+            fx,fy,fz = fieldToFocal(x,y,z,obs,waveCat)
+            _x, _y, _z = focalToField(fx,fy,fz,obs,waveCat)
+            # make sure unit spherical
+            mag = numpy.linalg.norm(numpy.array([_x,_y,_z]), axis=0)
+            assert numpy.sum(numpy.abs(mag-1)) < SMALL_NUM
+            # convert back to spherical
+            _thetas, _phis = cart2Sph(_x,_y,_z)
+            assert numpy.max(numpy.abs(thetas-_thetas)) < SMALL_NUM
+            # angular separation in arcseconds from round trip
+            g = x*_x + y*_y + z*_z
+            # numerical overflow makes g > 1 sometimes?
+            # this screws up the arccosine below, so round it
+            g = numpy.round(g,10)
+            # print("min max", numpy.min(g), numpy.max(g))
+            angSep = numpy.degrees(numpy.arccos(g))*3600
+            assert numpy.max(angSep) < 0.0001 # arcsec, basically no error
+
+
+
 if __name__ == "__main__":
-    test_observedToField_LCO()
+    test_fieldFocalCycle()

@@ -10,6 +10,7 @@ GFA_loc = 329 # mm
 # diagonal
 GFA_size = numpy.sqrt(2*(13.5/1000*2048)**2) # mm
 GFA_max_r = GFA_loc + 0.5*GFA_size
+GFA_min_r = GFA_loc - 0.5*GFA_size
 SMALL_NUM = 1e-12 # epsilon for computational accuracy
 MICRON_PER_MM = 1000
 
@@ -115,8 +116,10 @@ def loadZemaxData(filePath):
     # this also serves to make xyz right handed
     if "APO" in filePath:
         zoff = APO_Z_OFFSET
+        df["observatory"] = ["APO"]*len(df)
     elif "LCO" in filePath:
         zoff = LCO_Z_OFFSET
+        df["observatory"] = ["LCO"]*len(df)
     else:
         print("warining, unknown telescope model")
         zoff = 0
@@ -203,6 +206,14 @@ class SphFit(object):
             circle center position (along z axis)
         r_fit: float
             circle radius
+        powers: list of integers
+            powers used to create the polynomial distortion model
+        distortCoeffs: list of floats
+            coefficients corresponding to powers for forward distortion model
+        revDistortCoeffs: list of floats
+            coefficients corresponding to powers for reverse distortion model
+        df : pd.DataFrame
+            raw data used to create fits
 
         Paramters
         ------------
@@ -216,6 +227,7 @@ class SphFit(object):
         self.r_fit = None
         self.powers = None
         self.distortCoeffs = None
+        self.revDistortCoeffs = None
 
         if rMax is not None:
             self.df = self.df[self.df["rCentroid"] < rMax]
@@ -301,12 +313,15 @@ class SphFit(object):
             phiFocal = co + c1*phiField + c2*phiField**3
             so 0 is the bias, 1 is the linear term, extra elements are powers.
         """
+        self.powers = powers
 
         if self.b_fit is None:
             raise RuntimeError("Must call fitSphere prior to fitDistortion")
 
         phiField = self.df["phiField"].to_numpy()
         phiFocal = self.df["phiFocal"].to_numpy()
+
+        # fit forward model (phiFocal from phiField)
         A = []
         for p in powers:
             A.append(phiField**p)
@@ -314,7 +329,15 @@ class SphFit(object):
         A = numpy.array(A).T
         sol = numpy.linalg.lstsq(A, phiFocal, rcond=None)
         self.distortCoeffs = sol[0]
-        self.powers = powers
+
+        # fit reverse model (phiField from phiFocal)
+        A = []
+        for p in powers:
+            A.append(phiFocal**p)
+
+        A = numpy.array(A).T
+        sol = numpy.linalg.lstsq(A, phiField, rcond=None)
+        self.revDistortCoeffs = sol[0]
 
     def computeDistortResid(self):
         phiField = self.df["phiField"].to_numpy()
@@ -380,6 +403,7 @@ def plotRadialFocalSurface(figname, apModel, bossModel, site):
     plt.savefig("%s_%s_radFocSurf.png"%(figname, site), dpi=350)
     plt.close()
 
+
 def plotXYFocalSurface(figname, apModel, bossModel, site):
     thetas = numpy.linspace(0, numpy.pi*2, 1000)
     xGFA = GFA_max_r*numpy.cos(thetas)
@@ -404,6 +428,7 @@ def plotXYFocalSurface(figname, apModel, bossModel, site):
 
     plt.savefig("%s_%s_xyFocSurf.png"%(figname, site), dpi=350)
     plt.close()
+
 
 def plotXYFocalSurfaceResid(figname, apModel, bossModel, site):
     thetas = numpy.linspace(0, numpy.pi*2, 1000)
@@ -560,57 +585,150 @@ def plotXYFWHM(figname, df, site):
     plt.close()
 
 
-if __name__ == "__main__":
+def joseRegions():
+    gfaLCOradius = 333.42
+    gfaAPOradius = 333.09
+    gfaTheta = [30, 90, 150, 210, 270, 330]
+    _GFA_size = 27.6
+
     fileBase = os.path.join(os.getenv("SDSSCONV_DIR"), "data")
 
+    for obs, gfar in zip(["LCO", "APO"], [gfaLCOradius, gfaAPOradius]):
+        for sampling in ["uniformGFA"]:
+            filename = fileBase + "/" + sampling + obs + ".txt"
+            fullThetas = []
+            minRs = []
+            maxRs = []
+            for t in gfaTheta:
+                df = loadZemaxData(filename)
+                df = df[df["rCentroid"] < gfar+0.5*_GFA_size]
+                df = df[df["rCentroid"] > gfar-0.5*_GFA_size]
+                dtheta = numpy.degrees(numpy.arctan2(0.5*_GFA_size, gfar))
+                df = df[df["thetaCentroid"] < t+dtheta]
+                df = df[df["thetaCentroid"] > t-dtheta]
+                fullThetas.append(numpy.max(df["thetaField"])-numpy.min(df["thetaField"]))
+                minRs.append(numpy.min(df["phiField"]))
+                maxRs.append(numpy.max(df["phiField"]))
+
+                #print(obs, t, numpy.min(df["phiField"]), numpy.max(df["phiField"]), numpy.min(df["thetaField"]), numpy.max(df["thetaField"]))
+            print(obs, numpy.mean(minRs), numpy.mean(maxRs), numpy.mean(fullThetas))
+
+
+def compileZemaxData():
+    """Take the individual uniform simulation runs from zemax, compile them into a single
+    pandas style csv
+    """
+    fileBase = os.path.join(os.getenv("SDSSCONV_DIR"), "data")
+    dfs = []
     for obs in ["LCO", "APO"]:
-        for sampling in ["uniform"]: #["uniform", "reticle", "dense"]:
-            # use dense sampling to fit sphere and distortion
+        for sampling in ["uniform", "uniformGFA"]:
             filename = fileBase + "/" + sampling + obs + ".txt"
             df = loadZemaxData(filename)
-            print(obs, sampling, len(df))
-            # remove the GFA wavelength, clutters visualization and doesn't add much
-            df = df[df["waveCat"] != "GFA"]
-            # truncate the data 2mm beyond the outer edge of the GFA
-            df = df[df["rCentroid"] < GFA_max_r + 2]
-            # df = df[df["rCentroid"] < 300]
-            print(obs, sampling)
-            for index, row in list(df.iterrows())[:100]:
-                xf, yf, rCen = row[["xField", "yField", "rCentroid"]]
-                print(rCen, xf, yf, index)
+            dfs.append(df)
+    df = pd.concat(dfs, ignore_index=True)
+    df.to_csv(fileBase + "/zemaxData.csv", index=False)
 
-            # fit spheres
-            sphAp = SphFit(df[df["waveCat"] == "Apogee"])
-            sphAp.fitSphere()
-            print("ap points", len(sphAp.df))
-            sphAp.computeFocalItems()
-            sphBoss = SphFit(df[df["waveCat"] == "BOSS"])
-            print("boss points", len(sphBoss.df))
-            sphBoss.fitSphere()
-            sphBoss.computeFocalItems()
 
-            plotRadialFocalSurface(sampling, sphAp, sphBoss, obs)
-            plotRadialFocalSurfaceResid(sampling, sphAp, sphBoss, obs)
-            plotDistortionStack(sampling, sphAp, sphBoss, obs)
-            plotRadFWHM(sampling, df, obs)
+def generateFits():
+    """ Generate spherical and distortion fits from the uniform data
+    for each wavelengths at each site
 
-            if sampling == "uniform":
-                if obs == "LCO":
-                    powers = [1,3,5,7]
-                else:
-                    powers = [1,3,5,7,9]
-                sphAp.fitDistortion(powers)
-                print("%s apogee sph r=%i b=%i"%(obs, int(sphAp.r_fit), int(sphAp.b_fit)))
-                print("%s apogee coeffs %s"%(obs, ",".join(["%.4e"%x for x in sphAp.distortCoeffs])))
-                sphAp.computeDistortResid()
-                sphBoss.fitDistortion(powers)
-                print("%s boss sph r=%i b=%i"%(obs, int(sphBoss.r_fit), int(sphBoss.b_fit)))
-                print("%s boss coeffs %s"%(obs, ",".join(["%.4e"%x for x in sphBoss.distortCoeffs])))
-                sphBoss.computeDistortResid()
-                plotXYFocalSurface(sampling, sphAp, sphBoss, obs)
-                plotXYFocalSurfaceResid(sampling, sphAp, sphBoss, obs)
-                plotXYDistortionResiduals(sampling, sphAp, sphBoss, obs)
-                plotRadFWHM(sampling, df, obs)
-                plotXYFWHM(sampling, df, obs)
+    For now all wavelenghts are fit over the whole focal plane to just
+    beyond the GFA outer corner.  In the future we should probably
+    model the GFA wavelength only around the GFA region to minimize
+    systematic offsets from reality...
+
+    Probably want to continue using full field GFA fits for the FSC
+
+    may want to consider lowering the order of the fits
+    """
+
+    fileBase = os.path.join(os.getenv("SDSSCONV_DIR"), "data")
+
+    df = pd.read_csv(fileBase + "/zemaxData.csv")
+    # truncate the data 2mm beyond the outer edge of the GFA
+    df = df[df["rCentroid"] < GFA_max_r + 2]
+    for obs in ["LCO", "APO"]:
+        _df = df[df["observatory"] == obs]
+        if obs == "LCO":
+            # fit LCO with a 7th order
+            powers = [1, 3, 5, 7]
+        else:
+            # fit apo with a 9th order
+            powers = [1, 3, 5, 7, 9]
+        for waveCat in ["Apogee", "BOSS", "GFA"]:
+            sph = SphFit(_df[_df["waveCat"] == waveCat])
+            sph.fitSphere()
+            sph.computeFocalItems()
+            sph.fitDistortion(powers)
+            fwdModel = ["%.5e(phiField)^%i"%(c,p) for c,p in zip(sph.distortCoeffs, sph.powers)]
+            fwdModel = " + ".join(fwdModel)
+
+            revModel = ["%.5e(phiFocal)^%i"%(c,p) for c,p in zip(sph.revDistortCoeffs, sph.powers)]
+            revModel = " + ".join(revModel)
+            print("%s %s r=%i b=%i"%(obs, waveCat, sph.r_fit, sph.b_fit))
+            print("phiFocal = %s"%(fwdModel))
+            print("phiField = %s"%(revModel))
+            print("")
+            print("")
+
+
+
+    # import pdb; pdb.set_trace()
+
+    # for obs in ["LCO", "APO"]:
+    #     for sampling in ["uniform"]: #["uniform", "reticle", "dense"]:
+    #         # use dense sampling to fit sphere and distortion
+    #         filename = fileBase + "/" + sampling + obs + ".txt"
+    #         df = loadZemaxData(filename)
+    #         # print(obs, sampling, len(df))
+    #         # remove the GFA wavelength, clutters visualization and doesn't add much
+    #         df = df[df["waveCat"] != "GFA"]
+
+    #         # df = df[df["rCentroid"] < 300]
+
+    #         # print(obs, sampling)
+    #         # for index, row in list(df.iterrows())[:100]:
+    #         #     xf, yf, rCen = row[["xField", "yField", "rCentroid"]]
+    #         #     print(rCen, xf, yf, index)
+
+    #         # fit spheres
+    #         sphAp = SphFit(df[df["waveCat"] == "Apogee"])
+    #         sphAp.fitSphere()
+    #         print("ap points", len(sphAp.df))
+    #         sphAp.computeFocalItems()
+    #         sphBoss = SphFit(df[df["waveCat"] == "BOSS"])
+    #         print("boss points", len(sphBoss.df))
+    #         sphBoss.fitSphere()
+    #         sphBoss.computeFocalItems()
+
+    #         plotRadialFocalSurface(sampling, sphAp, sphBoss, obs)
+    #         plotRadialFocalSurfaceResid(sampling, sphAp, sphBoss, obs)
+    #         plotDistortionStack(sampling, sphAp, sphBoss, obs)
+    #         plotRadFWHM(sampling, df, obs)
+
+    #         if sampling == "uniform":
+    #             if obs == "LCO":
+    #                 powers = [1,3,5,7]
+    #             else:
+    #                 powers = [1,3,5,7,9]
+    #             sphAp.fitDistortion(powers)
+    #             print("%s apogee sph r=%i b=%i"%(obs, int(sphAp.r_fit), int(sphAp.b_fit)))
+    #             print("%s apogee coeffs %s"%(obs, ",".join(["%.4e"%x for x in sphAp.distortCoeffs])))
+    #             sphAp.computeDistortResid()
+    #             sphBoss.fitDistortion(powers)
+    #             print("%s boss sph r=%i b=%i"%(obs, int(sphBoss.r_fit), int(sphBoss.b_fit)))
+    #             print("%s boss coeffs %s"%(obs, ",".join(["%.4e"%x for x in sphBoss.distortCoeffs])))
+    #             sphBoss.computeDistortResid()
+    #             plotXYFocalSurface(sampling, sphAp, sphBoss, obs)
+    #             plotXYFocalSurfaceResid(sampling, sphAp, sphBoss, obs)
+    #             plotXYDistortionResiduals(sampling, sphAp, sphBoss, obs)
+    #             plotRadFWHM(sampling, df, obs)
+    #             plotXYFWHM(sampling, df, obs)
 
     # plt.show()
+
+if __name__ == "__main__":
+    compileZemaxData()
+    generateFits()
+

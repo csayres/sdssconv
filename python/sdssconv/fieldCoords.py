@@ -99,7 +99,7 @@ def cart2FieldAngle(x, y, z):
 
 
 def cart2Sph(x, y, z):
-    """Convert cartesian coordinates on unit sphere to spherical
+    """Convert cartesian coordinates to spherical
     coordinates theta, phi in degrees
 
     phi is polar angle measure from z axis
@@ -137,7 +137,7 @@ def cart2Sph(x, y, z):
     return [theta, phi]
 
 
-def sph2Cart(theta, phi):
+def sph2Cart(theta, phi, r=1):
     """Convert spherical coordinates theta, phi in degrees
     to cartesian coordinates on unit sphere.
 
@@ -150,11 +150,13 @@ def sph2Cart(theta, phi):
         degrees, azimuthal angle
     phi: scalar or 1D array
         degrees, polar angle
+    r: scalar
+        radius of curvature. Default to 1 for unit sphere
 
     Returns
     ---------
     result: list
-        [x,y,z] coordinates on unit sphere
+        [x,y,z] coordinates on sphere
 
     """
     # theta, phi = thetaPhi
@@ -169,9 +171,9 @@ def sph2Cart(theta, phi):
     #     raise RuntimeError("phi must be in range [-90, 90]")
 
     theta, phi = numpy.radians(theta), numpy.radians(phi)
-    x = numpy.cos(theta) * numpy.sin(phi)
-    y = numpy.sin(theta) * numpy.sin(phi)
-    z = numpy.cos(phi)
+    x = r*numpy.cos(theta) * numpy.sin(phi)
+    y = r*numpy.sin(theta) * numpy.sin(phi)
+    z = r*numpy.cos(phi)
 
     # if numpy.isnan(x) or numpy.isnan(y) or numpy.isnan(z):
     #     raise RuntimeError("NaN output [%.2f, %.2f, %.2f] for input [%.2f, %.2f]"%(x, y, z, numpy.degrees(theta), numpy.degrees(phi)))
@@ -420,10 +422,10 @@ def fieldToObserved(x, y, z, azCenter, altCenter, latitude):
     Parameters
     ------------
     x: scalar or 1D array
-        unit-spherical x field coord
+        unit-spherical x field coord (aligned with +RA)
     y: scalar or 1D array
-        unit-spherical y field coord
-    z: scalara or 1D array
+        unit-spherical y field coord (aligned with +Dec)
+    z: scalar or 1D array
         unit-spherical z coord
     azCenter: scalar
         azimuth in degrees, field center
@@ -496,6 +498,321 @@ def fieldToObserved(x, y, z, azCenter, altCenter, latitude):
         inds = numpy.argwhere(az >= 360)
         az[inds] = az[inds] - 360
         return az, alt
+
+
+class FocalPlaneModel(object):
+    """A class that holds parameters usefull for converting between
+    focal plane and field coordinates
+
+    note: should probably include limits of valid interpolations
+    """
+    def __init__(self, r, b, powers, forwardCoeffs, reverseCoeffs):
+        """
+        Parameters
+        -----------
+        r : float
+            radius of curvature (mm)
+        b : float
+            center of curvature (mm) along positive z axis
+        powers: list of ints
+            the powers to be included in the polynomial fit
+        forwardCoeffs: list of floats
+            coefficents associated with power list for field to
+            focal distortion model
+        reverseCoeffs: list of floats
+            coefficients associated with power list for focal to
+            field distortion model
+        """
+        self.r = r
+        self.b = b
+        self.powers = powers
+        self.forwardCoeffs = forwardCoeffs
+        self.reverseCoeffs = reverseCoeffs
+
+    def _forwardDistort(self, phiField):
+        """Convert off axis angle on field to off axis angle on focal plane
+        """
+        if hasattr(phiField, "__len__"):
+            phiField = numpy.array(phiField)
+            phiFocal = numpy.zeros(len(phiField))
+        else:
+            phiFocal = 0
+
+        for p, c in zip(self.powers, self.forwardCoeffs):
+            phiFocal += c * phiField ** p
+
+        return phiFocal
+
+    def _reverseDistort(self, phiFocal):
+        """Convert off axis angle on focal plane to off axis angle on field
+        """
+        if hasattr(phiFocal, "__len__"):
+            phiFocal = numpy.array(phiFocal)
+            phiField = numpy.zeros(len(phiFocal))
+        else:
+            phiField = 0
+
+        for p, c in zip(self.powers, self.reverseCoeffs):
+            phiField += c * phiFocal ** p
+
+        return phiField
+
+    def fieldToFocal(self, xField, yField, zField):
+        """Convert unit-spherical xyz field to non-unit spherical position on
+        the focal plane.  Focal plane origin is the M1 vertex.
+
+        Parameters
+        -----------
+        xField: scalar or 1D array
+            unit-spherical x field coord (aligned with +RA on sky)
+        yField: scalar or 1D array
+            unit-spherical y field coord (aligned with +Dec on sky)
+        zField: scalar or 1D array
+            unit-spherical z coord
+
+        Result
+        -------
+        xFocal: scalar or 1D array
+            spherical x focal coord mm (aligned with +RA on image)
+        yFocal: scalar or 1D array
+           spherical y focal coord mm (aligned with +Dec on image)
+        zFocal: scalar or 1D array
+            spherical z focal coord mm
+        """
+        # convert xyz to sph sys
+        thetaField, phiField = cart2Sph(xField, yField, zField)
+        phiFocal = self._forwardDistort(phiField)
+        # convert back to xyz coords
+        xFocal = self.r * numpy.cos(numpy.radians(thetaField)) * numpy.sin(numpy.radians(180 - phiFocal))
+        yFocal = self.r * numpy.sin(numpy.radians(thetaField)) * numpy.sin(numpy.radians(180 - phiFocal))
+        zFocal = self.r * numpy.cos(numpy.radians(180 - phiFocal)) + self.b
+        # print(zFocal[0], zFocal[0]-self.b)
+        return xFocal, yFocal, zFocal
+
+    def focalToField(self, xFocal, yFocal, zFocal):
+        """Convert xyz focal position to unit-spherical field position
+
+        Parameters
+        -----------
+        xFocal: scalar or 1D array
+            x focal coord mm (aligned with +RA on image)
+        yFocal: scalar or 1D array
+            y focal coord mm (aligned with +Dec on image)
+        zFocal: scalar or 1D array
+            z focal coord mm, +z points along boresight toward sky.
+
+        Result
+        -------
+        xField: scalar or 1D array
+            spherical x focal coord (aligned with +RA on sky)
+        yField: scalar or 1D array
+           spherical y focal coord (aligned with +Dec on sky)
+        zField: scalar or 1D array
+            spherical z coord
+        """
+
+        # note by definition thetaField==thetaFocal
+        thetaField = numpy.degrees(numpy.arctan2(yFocal, xFocal))
+
+        # generate focal phis (degree off boresight)
+        # angle off-axis from optical axis
+        rFocal = numpy.sqrt(xFocal**2 + yFocal**2)
+        v = numpy.array([rFocal, zFocal]).T
+        v[:, 1] = v[:, 1] - self.b
+
+        # unit vector pointing toward object on focal plane from circle center
+        # arc from vertex to off axis
+        v = v / numpy.vstack([numpy.linalg.norm(v, axis=1)] * 2).T
+        downwardZaxis = numpy.array([0, -1])  # FP lands at -Z so, Angle from sphere center towards ground
+        # phi angle between ray and optical axis measured from sphere center
+        phiFocal = numpy.degrees(numpy.arccos(v.dot(downwardZaxis)))
+        phiField = self._reverseDistort(phiFocal)
+
+        # finally report in unit-spherical xyz
+        return sph2Cart(thetaField, phiField)
+
+
+LCO_POWERS = [1, 3, 5, 7]
+APO_POWERS = [1, 3, 5, 7, 9]
+
+LCO_APOGEE_FOR_COEFFS = [2.11890e+00, 1.40826e-02, 1.27996e-04, 6.99967e-05]
+LCO_APOGEE_REV_COEFFS = [4.71943e-01, -6.98482e-04, 1.58969e-06, -1.47239e-07]
+
+LCO_BOSS_FOR_COEFFS = [1.89824e+00, 1.31773e-02, 1.04445e-04, 5.77341e-05]
+LCO_BOSS_REV_COEFFS = [5.26803e-01, -1.01471e-03, 3.47109e-06, -2.98113e-07]
+
+LCO_GFA_FOR_COEFFS = [1.93618e+00, 1.33536e-02, 9.17031e-05, 6.58945e-05]
+LCO_GFA_REV_COEFFS = [ 5.16480e-01, -9.50007e-04, 3.34034e-06, -2.93032e-07]
+
+APO_APOGEE_FOR_COEFFS = [1.40708e+00, 6.13779e-03, 7.25138e-04, -3.28007e-06, -1.65995e-05]
+APO_APOGEE_REV_COEFFS = [7.10691e-01, -1.56306e-03, -8.60362e-05, 3.10036e-06, 3.16259e-07]
+
+APO_BOSS_FOR_COEFFS = [1.36580e+00, 6.09425e-03, 6.54926e-04, 2.62176e-05, -2.27106e-05]
+APO_BOSS_REV_COEFFS = [7.32171e-01, -1.74740e-03, -9.28511e-05, 1.80969e-06, 6.48944e-07]
+
+APO_GFA_FOR_COEFFS = [1.37239e+00, 6.09825e-03, 6.67511e-04, 2.14437e-05, -2.17330e-05]
+APO_GFA_REV_COEFFS = [7.28655e-01, -1.71534e-03, -9.19802e-05, 2.07648e-06, 5.84442e-07]
+
+lcoApogeeModel = FocalPlaneModel(
+    r=8905,
+    b=7912,
+    powers=LCO_POWERS,
+    forwardCoeffs=LCO_APOGEE_FOR_COEFFS,
+    reverseCoeffs=LCO_APOGEE_REV_COEFFS,
+)
+
+lcoBossModel = FocalPlaneModel(
+    r=9938,
+    b=8945,
+    powers=LCO_POWERS,
+    forwardCoeffs=LCO_BOSS_FOR_COEFFS,
+    reverseCoeffs=LCO_BOSS_REV_COEFFS,
+)
+
+lcoGFAModel = FocalPlaneModel(
+    r=9743,
+    b=8751,
+    powers=LCO_POWERS,
+    forwardCoeffs=LCO_GFA_FOR_COEFFS,
+    reverseCoeffs=LCO_GFA_REV_COEFFS,
+)
+
+apoApogeeModel = FocalPlaneModel(
+    r=8939,
+    b=8163,
+    powers=APO_POWERS,
+    forwardCoeffs=APO_APOGEE_FOR_COEFFS,
+    reverseCoeffs=APO_APOGEE_REV_COEFFS,
+)
+
+apoBossModel = FocalPlaneModel(
+    r=9208,
+    b=8432,
+    powers=APO_POWERS,
+    forwardCoeffs=APO_BOSS_FOR_COEFFS,
+    reverseCoeffs=APO_BOSS_REV_COEFFS,
+)
+
+apoGFAModel = FocalPlaneModel(
+    r=9164,
+    b=8388,
+    powers=APO_POWERS,
+    forwardCoeffs=APO_GFA_FOR_COEFFS,
+    reverseCoeffs=APO_GFA_REV_COEFFS,
+)
+
+focalPlaneModelDict = {}
+focalPlaneModelDict["LCO"] = {
+    "Apogee": lcoApogeeModel,
+    "Boss": lcoBossModel,
+    "GFA": lcoGFAModel,
+}
+focalPlaneModelDict["APO"] = {
+    "Apogee": apoApogeeModel,
+    "Boss": apoBossModel,
+    "GFA": apoGFAModel,
+}
+
+
+def fieldToFocal(x, y, z, observatory, waveCat):
+    """Convert unit-spherical field coordinates to a position on
+    a spherical focal plane.
+
+    For each focalplane at each wavelength a spherical focal plane model
+    with a polynomial distortion model is fit, this fitting is done
+    in focalSurfaceModel.generateFits()
+
+    The telescope roatates the input field by 180 degrees.  Field x
+    is aligned with +RA, Field y is algned with +Dec, Field y points from
+    the telescope to the sky.
+
+    Focal x is aligned with +RA on the image (-RA on the sky)
+    Focal y is aligned with +Dec on the image (-Dec on the sky)
+    Focal z is aligned with the boresight, increasing from the telescope
+        toward the sky
+
+    The origin of the focal coordinate system is the M1 mirror vertex.
+
+    Parameters
+    -----------
+    x: scalar or 1D array
+        unit-spherical x field coord (aligned with +RA)
+    y: scalar or 1D array
+        unit-spherical y field coord (aligned with +Dec)
+    z: scalar or 1D array
+        unit-spherical z coord
+    observatory: string
+        either "APO" or "LCO"
+    waveCat: string
+        wavelength either "Apogee", "Boss", or "GFA"
+
+    Returns
+    --------
+    x: scalar or 1D array
+        x position of object on spherical focal plane
+        (+x aligned with +RA on image)
+    y: scalar or 1D array
+        y position of object on spherical focal plane
+        (+y aligned with +Dec on image)
+    z: scalar or 1D array
+        z position of object on spherical focal plane
+        (+z aligned boresight and increases from the telescope to the sky)
+    """
+    # these paramters are obtained from fits by focalSurfaceModel.generateFits()
+    if observatory not in ["APO", "LCO"]:
+        raise RuntimeError("observatory must be APO or LCO")
+    if waveCat not in ["Apogee", "Boss", "GFA"]:
+        raise RuntimeError("waveCat must be one of Apogee, Boss, or GFA")
+    model = focalPlaneModelDict[observatory][waveCat]
+    return model.fieldToFocal(x,y,z)
+
+
+def focalToField(x, y, z, observatory, waveCat):
+    """Convert xyz focal coordinates to a unit-spherical xyz field position.
+
+    For each focalplane at each wavelength a spherical focal plane model
+    with a polynomial distortion model is fit, this fitting is done
+    in focalSurfaceModel.generateFits()
+
+    Focal x is aligned with +RA on the image (-RA on the sky)
+    Focal y is aligned with +Dec on the image (-Dec on the sky)
+    Focal z is aligned with the boresight, increasing from the telescope
+        toward the sky
+
+    The origin of the focal coordinate system is the M1 mirror vertex.
+
+    Parameters
+    -----------
+    x: scalar or 1D array
+        x position of object on focal plane
+        (+x aligned with +RA on image)
+    y: scalar or 1D array
+        y position of object on focal plane
+        (+y aligned with +Dec on image)
+    z: scalar or 1D array
+        z position of object on focal plane
+        (+z aligned boresight and increases from the telescope to the sky)
+    observatory: string
+        either "APO" or "LCO"
+    waveCat: string
+        wavelength either "Apogee", "Boss", or "GFA"
+
+    Returns
+    --------
+    x: scalar or 1D array
+        unit-spherical x field coord (aligned with +RA on sky)
+    y: scalar or 1D array
+        unit-spherical y field coord (aligned with +Dec on sky)
+    z: scalar or 1D array
+        unit-spherical z coord
+    """
+    # these paramters are obtained from fits by focalSurfaceModel.generateFits()
+    if observatory not in ["APO", "LCO"]:
+        raise RuntimeError("observatory must be APO or LCO")
+    if waveCat not in ["Apogee", "Boss", "GFA"]:
+        raise RuntimeError("waveCat must be one of Apogee, Boss, or GFA")
+    model = focalPlaneModelDict[observatory][waveCat]
+    return model.focalToField(x,y,z)
 
 # def cart2AzAlt(x, y, z, azAltCen, latitude):
 #     """Convert field xyz coordinates on the unit sphere to azAlt coords
