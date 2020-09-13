@@ -5,6 +5,7 @@ from sdssconv.fieldCoords import cart2FieldAngle, fieldAngle2Cart
 from sdssconv.fieldCoords import sph2Cart, cart2Sph, SMALL_NUM
 from sdssconv.fieldCoords import observedToField, fieldToObserved
 from sdssconv.fieldCoords import focalToField, fieldToFocal, focalPlaneModelDict
+from sdssconv.fieldCoords import focalToWok, wokToFocal, APO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET
 
 numpy.random.seed(0)
 
@@ -378,6 +379,7 @@ def test_fieldFocalCycle():
             _thetas, _phis = cart2Sph(_x,_y,_z)
             assert numpy.max(numpy.abs(thetas-_thetas)) < SMALL_NUM
             # angular separation in arcseconds from round trip
+            # from dot product formula
             g = x*_x + y*_y + z*_z
             # numerical overflow makes g > 1 sometimes?
             # this screws up the arccosine below, so round it
@@ -387,6 +389,122 @@ def test_fieldFocalCycle():
             assert numpy.max(angSep) < 0.0001 # arcsec, basically no error
 
 
+def test_focalToWok():
+    zOff = -100
+    xOff = 0
+    yOff = 0
+    xTilt = 0
+    yTilt = 0
+    positionAngle = 0
+
+    xFocal, yFocal, zFocal = 0, 0, 0
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert xWok == 0
+    assert yWok == 0
+    assert zWok == -1*zOff
+
+    positionAngle = 90 # +y wok aligned with +x FP
+
+    xFocal, yFocal, zFocal = 10, 0, 0
+
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+    assert yWok == xFocal
+    assert numpy.abs(xWok) < SMALL_NUM
+
+    positionAngle = -90 # +y wok aligned with -x FP
+
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert yWok == -1*xFocal
+    assert numpy.abs(xWok) < SMALL_NUM
+
+    # test translation
+    xFocal, yFocal, zFocal = 0, 0, 0
+    xOff = 10
+    positionAngle = 0
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert xWok == -1*xOff
+    assert numpy.abs(yWok) < SMALL_NUM
+
+    yOff = 10
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert xWok == -1*xOff
+    assert yWok == -1*yOff
+
+    positionAngle = 45
+    xOff, yOff = 10, 10
+    xFocal, yFocal, zFocal = 0,0,0
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+    assert xWok == yWok
+    assert xWok < 0
+
+    positionAngle = 45
+    xOff, yOff = -10, 10
+    xFocal, yFocal, zFocal = 0,0,0
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+    assert xWok == -1*yWok
+    assert xWok > 0
+
+    b = 0.5*numpy.sqrt(2*10**2)
+    a = numpy.sqrt(2*b**2)
+    positionAngle = 45
+    xOff, yOff, zOff = 10, 10, 0
+    xTilt, yTilt = 0, 0
+    xFocal, yFocal, zFocal = b, b, 0
+
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+    assert numpy.abs(xWok + a) < SMALL_NUM
+    assert numpy.abs(yWok) < SMALL_NUM
+
+
+def test_focalWokCycle():
+    nPts = 1000
+    APO_max_field = 1.5
+    LCO_max_field = 1
+    for waveCat in ["Apogee", "Boss", "GFA"]:
+        for obs, maxField, zOff in zip(["APO", "LCO"], [APO_max_field, LCO_max_field], [APO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET]):
+            thetas = numpy.random.uniform(0,360,size=nPts)
+            phis = numpy.random.uniform(0,maxField,size=nPts)
+            for seed in numpy.arange(100):
+                xOffset = numpy.random.uniform(-10, 10)
+                yOffset = numpy.random.uniform(-10, 10)
+                xTilt = numpy.random.uniform(-2, 2)
+                yTilt = numpy.random.uniform(-2, 2)
+                x,y,z = sph2Cart(thetas, phis)
+                fx,fy,fz = fieldToFocal(x,y,z,obs,waveCat)
+                wx, wy, wz = focalToWok(fx,fy,fz, xOffset, yOffset, zOff, xTilt, yTilt)
+                _fx, _fy, _fz = wokToFocal(wx, wy, wz, xOffset, yOffset, zOff, xTilt, yTilt)
+                assert numpy.max(numpy.abs(fx-_fx)) < SMALL_NUM
+                assert numpy.max(numpy.abs(fy-_fy)) < SMALL_NUM
+                assert numpy.max(numpy.abs(fz-_fz)) < SMALL_NUM
+
 
 if __name__ == "__main__":
-    test_fieldFocalCycle()
+    test_focalToWok()

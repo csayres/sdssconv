@@ -749,13 +749,13 @@ def fieldToFocal(x, y, z, observatory, waveCat):
     Returns
     --------
     x: scalar or 1D array
-        x position of object on spherical focal plane
+        x position of object on spherical focal plane mm
         (+x aligned with +RA on image)
     y: scalar or 1D array
-        y position of object on spherical focal plane
+        y position of object on spherical focal plane mm
         (+y aligned with +Dec on image)
     z: scalar or 1D array
-        z position of object on spherical focal plane
+        z position of object on spherical focal plane mm
         (+z aligned boresight and increases from the telescope to the sky)
     """
     # these paramters are obtained from fits by focalSurfaceModel.generateFits()
@@ -784,13 +784,13 @@ def focalToField(x, y, z, observatory, waveCat):
     Parameters
     -----------
     x: scalar or 1D array
-        x position of object on focal plane
+        x position of object on focal plane mm
         (+x aligned with +RA on image)
     y: scalar or 1D array
-        y position of object on focal plane
+        y position of object on focal plane mm
         (+y aligned with +Dec on image)
     z: scalar or 1D array
-        z position of object on focal plane
+        z position of object on focal plane mm
         (+z aligned boresight and increases from the telescope to the sky)
     observatory: string
         either "APO" or "LCO"
@@ -814,27 +814,269 @@ def focalToField(x, y, z, observatory, waveCat):
     model = focalPlaneModelDict[observatory][waveCat]
     return model.focalToField(x,y,z)
 
-# def cart2AzAlt(x, y, z, azAltCen, latitude):
-#     """Convert field xyz coordinates on the unit sphere to azAlt coords
+#######
+# these are calibrated parameters, they
+# should live in a file somewhere and may
+# change throughout time
+# they are defined at PA=0!
 
-#     Parameters
-#     ------------
-#     cartXYZ: numpy.array
-#         [x,y,z] coordinates on unit sphere +x aligned with +RA, +y
-#         aligned with +DEC
-#     azAltCen: array
-#         [azimuth, altitude] coordinates of field center
-#     latitude: float
-#         observer latitude in degrees, positive for north
+# z offset is the distance between the M1 vertex
+# and the wok vertex.  This measurement doesn't really
+# exist in a model anywhere
+POSITIONER_HEIGHT = 143 # 143.03 # mm (height of fiber above wok surface measured by kal)
 
-#     Returns
-#     --------
-#     result: array
-#         [azimuth, altitude] coordinates in degrees.
-#         Az=0 south, Az=90 equals west
+# estimate the z offset by where the average focus position is
+# on axis between the two focal planes
+# a better way to do this is find out where stars
+# come into focus on the GFAs
+APO_WOK_Z_OFFSET = numpy.mean(
+    [apoApogeeModel.b - apoApogeeModel.r,
+    apoBossModel.b - apoBossModel.r
+    ]
+) - POSITIONER_HEIGHT
 
-#     """
-#     pass
+LCO_WOK_Z_OFFSET = numpy.mean(
+    [lcoApogeeModel.b - lcoApogeeModel.r,
+    lcoBossModel.b - lcoBossModel.r
+    ]
+) - POSITIONER_HEIGHT
+
+# tranlational de-center of wok with focal plane
+# the pointing model may handle this stuff
+# APO_WOK_X_OFFSET = 0
+# APO_WOK_Y_OFFSET = 0
+
+# LCO_WOK_X_OFFSET = 0
+# LCO_WOK_Y_OFFSET = 0
+
+# # tilts of woks with respect to optical axis
+# APO_WOK_TILT_X = 0 # tilt in degrees about x axis
+# APO_WOK_TILT_Y = 0 # tilt in degrees about y axis
+
+# LCO_WOK_TILT_X = 0 # tilt in degrees about x axis
+# LCO_WOK_TILT_Y = 0 # tilt in degrees about y axis
+#######
+
+# print("z offsets", APO_WOK_Z_Offset, LCO_WOK_Z_Offset)
+
+
+def focalToWok(
+    xFocal, yFocal, zFocal, positionAngle=0,
+    xOffset=0, yOffset=0, zOffset=0, tiltX=0, tiltY=0
+):
+    """Convert xyz focal coordinates in mm to xyz wok coordinates in mm.
+
+    The origin of the focal coordinate system is the
+    M1 vertex. focal +y points toward North, +x points toward E.
+    The origin of the wok coordinate system is the wok vertex.  -x points
+    toward the boss slithead.  +z points from telescope to sky.
+
+    Tilt is applied about x axis then y axis.
+
+
+    Parameters
+    -------------
+    xFocal: scalar or 1D array
+        x position of object on focal plane mm
+        (+x aligned with +RA on image)
+    yFocal: scalar or 1D array
+        y position of object on focal plane mm
+        (+y aligned with +Dec on image)
+    zFocal: scalar or 1D array
+        z position of object on focal plane mm
+        (+z aligned boresight and increases from the telescope to the sky)
+    positionAngle: scalar
+        position angle deg.  Angle measured from (image) North through East to wok +y.
+        So position angle of 45 deg, wok +y points NE
+    xOffset: scalar or None
+        x position (mm) of wok origin (vertex) in focal coords
+        calibrated
+    yOffset: scalar
+        y position (mm) of wok origin (vertex) in focal coords
+        calibratated
+    zOffset: scalar
+        z position (mm) of wok origin (vertex) in focal coords
+        calibratated
+    tiltX: scalar
+        tilt (deg) of wok about focal x axis at PA=0
+        calibrated
+    tiltY: scalar
+        tilt (deg) of wok about focal y axis at PA=0
+        calibrated
+
+    Returns
+    ---------
+    xWok: scalar or 1D array
+        x position of object in wok space mm
+        (+x aligned with +RA on image)
+    yWok: scalar or 1D array
+        y position of object in wok space mm
+        (+y aligned with +Dec on image)
+    zWok: scalar or 1D array
+        z position of object in wok space mm
+        (+z aligned boresight and increases from the telescope to the sky)
+    """
+
+    # apply calibrated tilts and translation (at PA=0)
+    # where they should be fit
+    # tilts are defined https://mathworld.wolfram.com/RotationMatrix.html
+    # as coordinate system rotations counter clockwise when looking
+    # down the positive axis toward the origin
+    coords = numpy.array([xFocal, yFocal, zFocal])
+    transXYZ = numpy.array([xOffset, yOffset, zOffset])
+
+    rotX = numpy.radians(tiltX)
+    rotY = numpy.radians(tiltY)
+    # rotation about z axis is position angle
+    # position angle is clockwise positive for rotation measured from
+    # north to wok +y (when looking from above the wok)
+    # however rotation matrices are positinve for counter-clockwise rotation
+    # hence the sign flip that's coming
+    rotZ = -1*numpy.radians(positionAngle)
+
+    rotMatX = numpy.array([
+        [1, 0, 0],
+        [0, numpy.cos(rotX), numpy.sin(rotX)],
+        [0, -1*numpy.sin(rotX), numpy.cos(rotX)]
+    ])
+
+    rotMatY = numpy.array([
+        [numpy.cos(rotY), 0, -1*numpy.sin(rotY)],
+        [0, 1, 0],
+        [numpy.sin(rotY), 0, numpy.cos(rotY)]
+    ])
+
+    # rotates coordinate system
+    rotMatZ = numpy.array([
+        [numpy.cos(rotZ), numpy.sin(rotZ), 0],
+        [-numpy.sin(rotZ), numpy.cos(rotZ), 0],
+        [0, 0, 1]
+    ])
+
+
+    # first apply rotation about x axis
+    coords = rotMatX.dot(coords)
+    # next apply rotation about y axis
+    coords = rotMatY.dot(coords)
+    # apply rotation about z axis (PA)
+    coords = rotMatZ.dot(coords)
+
+
+    print("coords", coords)
+
+    # apply translation
+    if hasattr(xFocal, "__len__"):
+        # list of coords fed in
+        transXYZ = numpy.array([transXYZ]*len(xFocal)).T
+        xWok, yWok, zWok = coords - transXYZ
+    else:
+        # single set of xyz coords fed in
+        xWok, yWok, zWok = coords - transXYZ
+
+    # # rotate about z axis (PA setting)
+    # xWok, yWok, zWok = rotMatZ.dot(coords)
+
+    return xWok, yWok, zWok
+
+
+def wokToFocal(
+    xWok, yWok, zWok, positionAngle=0,
+    xOffset=0, yOffset=0, zOffset=0, tiltX=0, tiltY=0
+):
+    """Convert xyz wok coordinates in mm to xyz focal coordinates in mm.
+
+    The origin of the focal coordinate system is the
+    M1 vertex. focal +y points toward North, +x points toward E.
+    The origin of the wok coordinate system is the wok vertex.  -x points
+    toward the boss slithead.  +z points from telescope to sky.
+
+    Tilt is applied about x axis then y axis.
+
+
+    Parameters
+    -------------
+    xWok: scalar or 1D array
+        x position of object in wok space mm
+        (+x aligned with +RA on image)
+    yWok: scalar or 1D array
+        y position of object in wok space mm
+        (+y aligned with +Dec on image)
+    zWok: scalar or 1D array
+        z position of object in wok space mm
+        (+z aligned boresight and increases from the telescope to the sky)
+    positionAngle: scalar
+        position angle deg.  Angle measured from (image) North through East to wok +y.
+        So position angle of 45 deg, wok +y points NE
+    xOffset: scalar or None
+        x position (mm) of wok origin (vertex) in focal coords
+        calibrated
+    yOffset: scalar
+        y position (mm) of wok origin (vertex) in focal coords
+        calibratated
+    zOffset: scalar
+        z position (mm) of wok origin (vertex) in focal coords
+        calibratated
+    tiltX: scalar
+        tilt (deg) of wok about focal x axis at PA=0
+        calibrated
+    tiltY: scalar
+        tilt (deg) of wok about focal y axis at PA=0
+        calibrated
+
+    Returns
+    ---------
+    xFocal: scalar or 1D array
+        x position of object in focal coord sys mm
+        (+x aligned with +RA on image)
+    yFocal: scalar or 1D array
+        y position of object in focal coord sys mm
+        (+y aligned with +Dec on image)
+    zFocal: scalar or 1D array
+        z position of object in focal coord sys mm
+        (+z aligned boresight and increases from the telescope to the sky)
+    """
+    # this routine is a reversal of the steps
+    # in the function focalToWok, with rotational
+    # angles inverted and translations applied in reverse
+    coords = numpy.array([xWok, yWok, zWok])
+
+    rotX = numpy.radians(-1*tiltX)
+    rotY = numpy.radians(-1*tiltY)
+    rotZ = numpy.radians(positionAngle)
+
+    rotMatX = numpy.array([
+        [1, 0, 0],
+        [0, numpy.cos(rotX), numpy.sin(rotX)],
+        [0, -numpy.sin(rotX), numpy.cos(rotX)]
+    ])
+
+    rotMatY = numpy.array([
+        [numpy.cos(rotY), 0, -numpy.sin(rotY)],
+        [0, 1, 0],
+        [numpy.sin(rotY), 0, numpy.cos(rotY)]
+    ])
+
+    rotMatZ = numpy.array([
+        [numpy.cos(rotZ), numpy.sin(rotZ), 0],
+        [-numpy.sin(rotZ), numpy.cos(rotZ), 0],
+        [0, 0, 1]
+    ])
+
+    transXYZ = numpy.array([xOffset, yOffset, zOffset])
+
+    # add offsets for reverse transform
+    if hasattr(xWok, "__len__"):
+        # list of coords fed in
+        transXYZ = numpy.array([transXYZ]*len(xWok)).T
+        coords = coords + transXYZ
+    else:
+        # single set of xyz coords fed in
+        coords = coords + transXYZ
+
+    coords = rotMatZ.dot(coords)
+    coords = rotMatY.dot(coords)
+    xFocal, yFocal, zFocal = rotMatX.dot(coords)
+    return xFocal, yFocal, zFocal
 
 
 if __name__ == "__main__":
