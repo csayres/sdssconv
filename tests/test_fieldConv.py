@@ -483,6 +483,70 @@ def test_focalToWok():
     assert numpy.abs(xWok + a) < SMALL_NUM
     assert numpy.abs(yWok) < SMALL_NUM
 
+    # test tilts
+    positionAngle =0
+    xOff, yOff, zOff = 0, 0, 0
+    xFocal, yFocal, zFocal = 1, 0, 0
+    xTilt = 1
+    yTilt = 0
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+    assert xWok == xFocal
+    assert yWok == yFocal
+    assert zWok == zFocal
+
+    positionAngle =0
+    xOff, yOff, zOff = 0, 0, 0
+    xFocal, yFocal, zFocal = 0, 1, 0
+    xTilt = 1
+    yTilt = 0
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert xWok == 0
+    assert yWok < 1
+    assert yWok > 0
+    assert zWok < 0
+
+    positionAngle =0
+    xOff, yOff, zOff = 0, 0, 0
+    xFocal, yFocal, zFocal = 1, 1, 0
+    xTilt = 1
+    yTilt = 4
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert xWok > 0
+    assert xWok < 1
+    assert yWok < 1
+    assert yWok > 0
+    assert yWok < 1
+    assert zWok > 0
+
+    positionAngle =0
+    xOff, yOff, zOff = 0, 0, 0
+    xFocal, yFocal, zFocal = 1, 1, 0
+    xTilt = 1
+    yTilt = -1
+    xWok, yWok, zWok = focalToWok(
+        xFocal, yFocal, zFocal, positionAngle,
+        xOff, yOff, zOff, xTilt, yTilt
+    )
+
+    assert xWok > 0
+    assert xWok < 1
+    assert yWok < 1
+    assert yWok > 0
+    assert yWok < 1
+    assert zWok < 0
+
+
 
 def test_focalWokCycle():
     nPts = 1000
@@ -493,6 +557,7 @@ def test_focalWokCycle():
             thetas = numpy.random.uniform(0,360,size=nPts)
             phis = numpy.random.uniform(0,maxField,size=nPts)
             for seed in numpy.arange(100):
+                # try random calibrations
                 xOffset = numpy.random.uniform(-10, 10)
                 yOffset = numpy.random.uniform(-10, 10)
                 xTilt = numpy.random.uniform(-2, 2)

@@ -961,9 +961,6 @@ def focalToWok(
     # apply rotation about z axis (PA)
     coords = rotMatZ.dot(coords)
 
-
-    print("coords", coords)
-
     # apply translation
     if hasattr(xFocal, "__len__"):
         # list of coords fed in
