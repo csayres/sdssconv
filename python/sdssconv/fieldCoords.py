@@ -987,17 +987,17 @@ def wokToFocal(
     The origin of the wok coordinate system is the wok vertex.  -x points
     toward the boss slithead.  +z points from telescope to sky.
 
-    Tilt is applied about x axis then y axis.
+    Tilt is applied first about x axis then y axis.
 
 
     Parameters
     -------------
     xWok: scalar or 1D array
         x position of object in wok space mm
-        (+x aligned with +RA on image)
+        (+x aligned with +RA on image at PA=0)
     yWok: scalar or 1D array
         y position of object in wok space mm
-        (+y aligned with +Dec on image)
+        (+y aligned with +Dec on image at PA=0)
     zWok: scalar or 1D array
         z position of object in wok space mm
         (+z aligned boresight and increases from the telescope to the sky)
@@ -1075,114 +1075,261 @@ def wokToFocal(
     xFocal, yFocal, zFocal = rotMatX.dot(coords)
     return xFocal, yFocal, zFocal
 
+def _verify3Vector(checkMe, label):
+    if not hasattr(checkMe, "__len__"):
+        raise RuntimeError("%s must be a 3-vector"%label)
+    elif len(checkMe) != 3:
+        raise RuntimeError("%s must be a 3-vector"%label)
+    else:
+        checkMe = numpy.array(checkMe)
+    return checkMe
+
+
+def wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat,
+    elementHeight = 143, scaleFac = 1,
+    dx = 0, dy = 0, dz = 0, dRot = 0):
+    """
+    Convert from wok coordinates to tangent coordinates.
+
+    xyz Wok coords are mm with orgin at wok vertex. +z points from wok toward M2.
+    -x points toward the boss slithead
+
+    In the tangent coordinate frame the xy plane is tangent to the wok
+    surface at xyz position b.  The origin is set to be elementHeight above
+    the wok surface.
+
+    Parameters
+    -------------
+    xWok: scalar or 1D array
+        x position of object in wok space mm
+        (+x aligned with +RA on image at PA = 0)
+    yWok: scalar or 1D array
+        y position of object in wok space mm
+        (+y aligned with +Dec on image at PA = 0)
+    zWok: scalar or 1D array
+        z position of object in wok space mm
+        (+z aligned boresight and increases from the telescope to the sky)
+    b: 3-vector
+        x,y,z position (mm) of element hole on wok surface measured in wok coords
+    iHat: 3-vector
+        x,y,z unit vector in wok coords that indicate the direction
+        of the tangent coordinate x axis
+    jHat: 3-vector
+        x,y,z unit vector in wok coords that indicate the direction
+        of the tangent coordinate y axis
+    kHat: 3-vector
+        x,y,z unit vector in wok coords that indicate the direction
+        of the tangent coordinate z axis
+    elementHeight: scalar
+        height (mm) of positioner/GFA chip above wok surface
+    scaleFac: scalar
+        scale factor to apply to b to account for thermal expansion of wok.
+        scale is applied to b radially
+    dx: scalar
+        x offset (mm), calibration to capture small displacements of
+        tangent x
+    dy: scalar
+        y offset (mm), calibration to capture small displacements of
+        tangent y
+    dz: scalar
+        z offset (mm), calibration to capture small displacements of
+        tangent x
+    dRot: scalar
+        rotation (deg) about tangent z axis, capture small calibrated rotations
+        of the elements in the wok
+
+    Returns
+    ---------
+    xTangent: scalar or 1D array
+        x position (mm) in tangent coordinates
+    yTangent: scalar or 1D array
+        y position (mm) in tangent coordinates
+    zTangent: scalar or 1D array
+        z position (mm) in tangent coordinates
+    """
+    # check for problems
+    b = _verify3Vector(b, "b")
+    iHat = _verify3Vector(iHat, "iHat")
+    jHat = _verify3Vector(jHat, "jHat")
+    kHat = _verify3Vector(kHat, "kHat")
+
+    coords = numpy.array([xWok,yWok,zWok])
+
+    # apply radial scale factor to b
+    # assume that z is unaffected by
+    # thermal expansion (probably reasonable)
+    if scaleFac != 1:
+        r = numpy.sqrt(b[0]**2+b[1]**2)
+        theta = numpy.arctan2(b[1], b[0])
+        r = r*scaleFac
+        b[0] = r*numpy.cos(theta)
+        b[1] = r*numpy.sin(theta)
+
+    isArr = hasattr(xWok, "__len__")
+    if isArr:
+        b = numpy.array([b]*len(xWok)).T
+
+
+
+    # offset to wok base position
+    coords = coords - b
+
+    # rotate normal to wok surface at point b
+    rotNorm = numpy.array([iHat, jHat, kHat], dtype="float64").T
+    coords = rotNorm.dot(coords)
+
+
+
+    # offset xy plane to focal surface
+    if isArr:
+        coords[2,:] = coords[2,:] - elementHeight
+    else:
+        coords[2] = coords[2] - elementHeight
+
+    # apply rotational calibration
+    if dRot != 0:
+        rotZ = numpy.radians(dRot)
+        rotMatZ = numpy.array([
+            [numpy.cos(rotZ), numpy.sin(rotZ), 0],
+            [-numpy.sin(rotZ), numpy.cos(rotZ), 0],
+            [0, 0, 1]
+        ])
+
+        coords = rotMatZ.dot(coords)
+
+    return coords[0], coords[1], coords[2]
+
+
+def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
+    elementHeight = 143, scaleFac = 1,
+    dx = 0, dy = 0, dz = 0, dRot = 0):
+    """
+    Convert from tangent coordinates at b to wok coordinates.
+
+    xyz Wok coords are mm with orgin at wok vertex. +z points from wok toward M2.
+    -x points toward the boss slithead
+
+    In the tangent coordinate frame the xy plane is tangent to the wok
+    surface at xyz position b.  The origin is set to be elementHeight above
+    the wok surface.
+
+    Parameters
+    -------------
+    xTangent: scalar or 1D array
+        x position (mm) in tangent coordinates
+    yTangent: scalar or 1D array
+        y position (mm) in tangent coordinates
+    zTangent: scalar or 1D array
+        z position (mm) in tangent coordinates
+    b: 3-vector
+        x,y,z position (mm) of element hole on wok surface measured in wok coords
+    iHat: 3-vector
+        x,y,z unit vector in wok coords that indicate the direction
+        of the tangent coordinate x axis
+    jHat: 3-vector
+        x,y,z unit vector in wok coords that indicate the direction
+        of the tangent coordinate y axis
+    kHat: 3-vector
+        x,y,z unit vector in wok coords that indicate the direction
+        of the tangent coordinate z axis
+    elementHeight: scalar
+        height (mm) of positioner/GFA chip above wok surface
+    scaleFac: scalar
+        scale factor to apply to b to account for thermal expansion of wok.
+        scale is applied to b radially
+    dx: scalar
+        x offset (mm), calibration to capture small displacements of
+        tangent x
+    dy: scalar
+        y offset (mm), calibration to capture small displacements of
+        tangent y
+    dz: scalar
+        z offset (mm), calibration to capture small displacements of
+        tangent x
+    dRot: scalar
+        rotation (deg) about tangent z axis, capture small calibrated rotations
+        of the elements in the wok
+
+    Returns
+    ---------
+    xWok: scalar or 1D array
+        x position of object in wok space mm
+        (+x aligned with +RA on image at PA = 0)
+    yWok: scalar or 1D array
+        y position of object in wok space mm
+        (+y aligned with +Dec on image at PA = 0)
+    zWok: scalar or 1D array
+        z position of object in wok space mm
+        (+z aligned boresight and increases from the telescope to the sky)
+    """
+    # check for problems
+    b = _verify3Vector(b, "b")
+    iHat = _verify3Vector(iHat, "iHat")
+    jHat = _verify3Vector(jHat, "jHat")
+    kHat = _verify3Vector(kHat, "kHat")
+
+
+    coords = numpy.array([xTangent,yTangent,zTangent])
+
+
+    # apply rotational calibration
+    if dRot != 0:
+        rotZ = -1*numpy.radians(dRot)
+        rotMatZ = numpy.array([
+            [numpy.cos(rotZ), numpy.sin(rotZ), 0],
+            [-numpy.sin(rotZ), numpy.cos(rotZ), 0],
+            [0, 0, 1]
+        ])
+
+        coords = rotMatZ.dot(coords)
+
+
+    isArr = hasattr(xTangent, "__len__")
+    if isArr:
+        b = numpy.array([b]*len(xWok)).T
+    # offset xy plane to focal surface
+    if isArr:
+        coords[2,:] = coords[2,:] + elementHeight
+    else:
+        coords[2] = coords[2] + elementHeight
+
+    # rotate normal to wok surface at point b
+    invRotNorm = numpy.linalg.inv(numpy.array([iHat, jHat, kHat], dtype="float64").T)
+
+    coords = invRotNorm.dot(coords)
+
+    # offset to wok base position
+    # apply radial scale factor to b
+    # assume that z is unaffected by
+    # thermal expansion (probably reasonable)
+    if scaleFac != 1:
+        r = numpy.sqrt(b[0]**2+b[1]**2)
+        theta = numpy.arctan2(b[1], b[0])
+        r = r*scaleFac
+        b[0] = r*numpy.cos(theta)
+        b[1] = r*numpy.sin(theta)
+
+    coords = coords + b
+
+
+    return coords[0], coords[1], coords[2]
+
+
+
+
+
+
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    import seaborn as sns
-    numpy.random.seed(1)
-    azCen = 180+35 # degrees, roughly SW
-    altCen = 45 # degrees
-    latitude = 35
-    azCoords = azCen + numpy.random.uniform(-1,1, size=30)
-    altCoords = altCen + numpy.random.uniform(-1,1, size=30)
-    azAlt = numpy.c_[azCoords, altCoords]
-    # add last coord as center
-    azAlt[-1] = numpy.array([azCen, altCen])
-    print(azAlt.shape)
-    plt.figure()
-    plt.plot(azAlt[:,0], azAlt[:,1], 'o')
-    plt.plot(azAlt[-1,0], azAlt[-1,1], 'x')
-    plt.xlabel("Az")
-    plt.ylabel("Alt")
-    # plt.show()
+    b=[1,1,0]
+    iHat=[1,0,0]
+    jHat = [0,1,0]
+    kHat = [0,0,1]
+    xWok = [1,2,3,4]
+    yWok = [1,2,3,4]
+    zWok = [0,0,0,0]
 
-
-    # # convert azAlt to unit sphere x=North, y=West
-    # thetas=azAlt[:,0]*-1
-    # phis = 90 - azAlt[:,1]
-    # carts = []
-    # for theta, phi in zip(thetas, phis):
-    #     # x = south
-    #     # y = east
-    #     # z = zenith
-    #     carts.append(sph2Cart(theta, phi))
-    # carts = numpy.array(carts)
-
-    # # rotate about z axes such that field center lies on -y
-    # sinT1 = numpy.sin(numpy.radians(90 + azCen))
-    # cosT1 = numpy.cos(numpy.radians(90 + azCen))
-    # rot1 = numpy.array([
-    #     [ cosT1, sinT1, 0],
-    #     [-sinT1, cosT1, 0],
-    #     [     0,     0, 1]
-    # ])
-    # carts2 = rot1.dot(carts.T).T
-    # # carts2 = carts.dot(rot1.T)
-    # plt.figure()
-    # # image flipped left right due to looking from
-    # # outside sphere now...
-    # plt.plot(carts2[:,0]*-1, carts2[:,2], 'o') # plot x vs z
-    # plt.plot(carts2[-1,0]*-1, carts2[-1,2], 'x') # field center
-    # plt.xlabel("-x")
-    # plt.ylabel("z")
-
-    # # rotate about y axis such that field center
-    # # is aligned with +z
-    # sinT2 = numpy.sin(numpy.radians(90-altCen))
-    # cosT2 = numpy.cos(numpy.radians(90-altCen))
-    # rot2 = numpy.array([
-    #     [1, 0, 0],
-    #     [0,  cosT2, sinT2],
-    #     [0, -sinT2, cosT2]
-    # ])
-
-    # carts3 = rot2.dot(carts2.T).T
-    # plt.figure()
-    # plt.plot(carts3[:,0]*-1, carts3[:,1], 'o') # plot x vs y
-    # plt.plot(carts3[-1,0]*-1, carts3[-1,1], 'x') # plot x vs y
-    # plt.xlabel("-x")
-    # plt.ylabel("y")
-
-    x, y, z = observedToField(azAlt[:,0], azAlt[:,1], azCen, altCen, latitude)
-    plt.figure()
-    plt.plot(x*-1, y, 'o') # plot x vs y
-    plt.plot(x[-1]*-1, y[-1], 'x') # plot x vs y
-    plt.xlabel("-x")
-    plt.ylabel("y")
-
-    x,y,z = observedToField(azAlt[1,0], azAlt[1,1], azCen, altCen, latitude)
-    plt.plot(x*-1, y, '+r')
-
-    # import pdb; pdb.set_trace()
-
-    # lat = 45
-    # azs = numpy.random.uniform(0, 360, size=10000)
-    # alts = numpy.random.uniform(0, 90, size=10000)
-    # d = {}
-    # d["az"] = azs
-    # d["alt"] = alts
-    # ha, dec = azAlt2HaDec(azs, alts, lat)
-    # d["ha"] = ha
-    # d["dec"] = dec
-    # q = parallacticAngle(ha, dec, lat)
-    # print("q", q)
-    # plt.figure()
-    # plt.hist(q)
-    # d["q"] = q
-    # d = pd.DataFrame(d)
-    # plt.figure()
-    # sns.scatterplot(x="az", y="alt", hue="q", data=d)
-    # plt.figure()
-    # sns.scatterplot(x="ha", y="dec", hue="q", data=d)
-
-    plt.show()
-
-
-
-
-
-
-
+    x,y,z = wokToTangent(xWok[1], yWok[1], zWok[1], b, iHat, jHat, kHat)
+    print(x,y,z)
 
 

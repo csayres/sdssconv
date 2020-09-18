@@ -1,11 +1,14 @@
 import pytest
+import os
 import numpy
+import pandas as pd
 import matplotlib.pyplot as plt
 from sdssconv.fieldCoords import cart2FieldAngle, fieldAngle2Cart
 from sdssconv.fieldCoords import sph2Cart, cart2Sph, SMALL_NUM
 from sdssconv.fieldCoords import observedToField, fieldToObserved
 from sdssconv.fieldCoords import focalToField, fieldToFocal, focalPlaneModelDict
 from sdssconv.fieldCoords import focalToWok, wokToFocal, APO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET
+from sdssconv.fieldCoords import wokToTangent, tangentToWok
 
 numpy.random.seed(0)
 
@@ -570,6 +573,106 @@ def test_focalWokCycle():
                 assert numpy.max(numpy.abs(fy-_fy)) < SMALL_NUM
                 assert numpy.max(numpy.abs(fz-_fz)) < SMALL_NUM
 
+def test_flatWok():
+    # flat wok unit directions
+    iHat=[1,0,0]
+    jHat = [0,1,0]
+    kHat = [0,0,1]
+
+
+    b = [0,0,0] #wok vertex
+    xWok = 1
+    yWok = 1
+    zWok = 0
+
+    tx,ty,tz = wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat)
+
+    assert tx == xWok
+    assert ty == yWok
+    assert tz == -143 # origin is 143 mm above wok surface
+
+    b = [1,1,0]
+    xWok,yWok,zWok = 1,1,0
+    tx,ty,tz = wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat)
+    assert tx == 0
+    assert ty == 0
+    assert tz == -143
+
+    b = [1,1,0]
+    xWok,yWok,zWok = 0,0,0
+    tx,ty,tz = wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat)
+    assert tx == -1
+    assert ty == -1
+    assert tz == -143
+
+    b = [0,0,0]
+    xWok,yWok,zWok = 1,1,0
+    dRot = 45
+    tx,ty,tz = wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat, dRot=dRot)
+
+    assert numpy.abs(tx - numpy.sqrt(2)) < SMALL_NUM
+    assert numpy.abs(ty) < SMALL_NUM
+    assert tz == -143
+
+    b = [2,2,0]
+    xWok,yWok,zWok = 1,1,0
+    dRot = 45
+    tx,ty,tz = wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat, dRot=dRot)
+
+    assert numpy.abs(tx + numpy.sqrt(2)) < SMALL_NUM
+    assert numpy.abs(ty) < SMALL_NUM
+    assert tz == -143
+
+def test_curvedWok():
+    csvFile = os.getenv("SDSSCONV_DIR") +  "/data/wokCoords.csv"
+    wokCoords = pd.read_csv(csvFile, index_col=0)
+
+    for idx, row in wokCoords.iterrows():
+
+        b = row[["x", "y", "z"]]
+        iHat = row[["ix", "iy", "iz"]]
+        jHat = row[["jx", "jy", "jz"]]
+        kHat = row[["kx", "ky", "kz"]]
+        xWok = b[0]
+        yWok = b[1]
+        zWok = b[2]
+        tx,ty,tz = wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat)
+        assert numpy.sqrt(tx*2+ty**2) < SMALL_NUM
+        assert (tz+143) < SMALL_NUM
+
+def test_wokTangentCycle():
+    csvFile = os.getenv("SDSSCONV_DIR") +  "/data/wokCoords.csv"
+    wokCoords = pd.read_csv(csvFile, index_col=0)
+
+    for idx, row in wokCoords.iterrows():
+        b = row[["x", "y", "z"]]
+        iHat = row[["ix", "iy", "iz"]]
+        jHat = row[["jx", "jy", "jz"]]
+        kHat = row[["kx", "ky", "kz"]]
+        for seed in range(10):
+            tx = numpy.random.uniform(-50,50)
+            ty = numpy.random.uniform(-50,50)
+            tz = numpy.random.uniform(-50,50)
+            scaleFac = numpy.random.uniform(0.8, 1.2)
+            dx = numpy.random.uniform(-5, 5)
+            dy = numpy.random.uniform(-5, 5)
+            dz = numpy.random.uniform(-5, 5)
+            dRot = numpy.random.uniform(-20,20)
+            elementHeight = 143
+            wx,wy,wz = tangentToWok(
+                tx, ty, tz,b,iHat,jHat,kHat,
+                elementHeight, scaleFac, dx, dy, dz, dRot
+            )
+            _tx, _ty, _tz = wokToTangent(
+                wx, wy, wz, b,iHat,jHat,kHat,
+                elementHeight, scaleFac, dx, dy, dz, dRot
+            )
+            norm = numpy.sqrt(
+                (tx-_tx)**2 + (ty-_ty)**2 + (tz-_tz)**2
+            )
+            # print("norm", norm)
+            assert norm < SMALL_NUM
+
 
 if __name__ == "__main__":
-    test_focalToWok()
+    test_wokTangentCycle()
