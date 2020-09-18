@@ -640,6 +640,7 @@ def test_curvedWok():
         assert numpy.sqrt(tx*2+ty**2) < SMALL_NUM
         assert (tz+143) < SMALL_NUM
 
+
 def test_wokTangentCycle():
     csvFile = os.getenv("SDSSCONV_DIR") +  "/data/wokCoords.csv"
     wokCoords = pd.read_csv(csvFile, index_col=0)
@@ -673,6 +674,49 @@ def test_wokTangentCycle():
             # print("norm", norm)
             assert norm < SMALL_NUM
 
+def test_wokVsFocalSurface():
+    csvFile = os.getenv("SDSSCONV_DIR") +  "/data/wokCoords.csv"
+    wokCoords = pd.read_csv(csvFile, index_col=0)
+    lcoCoords = wokCoords[wokCoords["wokType"]=="LCO"]
+    apoCoords = wokCoords[wokCoords["wokType"]=="APO"]
+
+
+    for cs in [lcoCoords, apoCoords]:
+        bs = []
+        fs = []
+        for idx, row in cs.iterrows():
+            b = row[["x", "y", "z"]].to_numpy()
+            bs.append(b)
+            iHat = row[["ix", "iy", "iz"]]
+            jHat = row[["jx", "jy", "jz"]]
+            kHat = row[["kx", "ky", "kz"]]
+            f = tangentToWok(
+                0, 0, 0, b, iHat, jHat, kHat,
+            )
+            fs.append(numpy.array(f))
+
+        bs = numpy.array(bs, dtype="float64")
+        fs = numpy.array(fs, dtype="float64")
+        r1 = numpy.linalg.norm(bs[:,:2], axis=1)
+        z1 = bs[:,2]
+        r2 = numpy.linalg.norm(fs[:,:2], axis=1)
+        z2 = fs[:,2]
+
+        sortIdx = numpy.argsort(r1)
+        r1 = r1[sortIdx]
+        z1 = r1[sortIdx]
+        r2 = r2[sortIdx]
+        z2 = z2[sortIdx]
+
+        # on axis no curve
+        assert numpy.abs(r1[0]-r2[0]) < SMALL_NUM
+
+        assert numpy.sum(r2[1:]>r1[1:]) == 0
+
+        # could add a test to show that angle increases
+        # with radius but dont have a good way to test it
+        # plotted it and it looks good...
+
 
 if __name__ == "__main__":
-    test_wokTangentCycle()
+    test_wokVsFocalSurface()

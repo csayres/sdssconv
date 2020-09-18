@@ -1175,7 +1175,7 @@ def wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat,
     coords = coords - b
 
     # rotate normal to wok surface at point b
-    rotNorm = numpy.array([iHat, jHat, kHat], dtype="float64").T
+    rotNorm = numpy.array([iHat, jHat, kHat], dtype="float64")
     coords = rotNorm.dot(coords)
 
 
@@ -1271,7 +1271,6 @@ def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
 
     coords = numpy.array([xTangent,yTangent,zTangent])
 
-
     # apply rotational calibration
     if dRot != 0:
         rotZ = -1*numpy.radians(dRot)
@@ -1286,7 +1285,7 @@ def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
 
     isArr = hasattr(xTangent, "__len__")
     if isArr:
-        b = numpy.array([b]*len(xWok)).T
+        b = numpy.array([b]*len(xTangent)).T
     # offset xy plane to focal surface
     if isArr:
         coords[2,:] = coords[2,:] + elementHeight
@@ -1294,7 +1293,7 @@ def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
         coords[2] = coords[2] + elementHeight
 
     # rotate normal to wok surface at point b
-    invRotNorm = numpy.linalg.inv(numpy.array([iHat, jHat, kHat], dtype="float64").T)
+    invRotNorm = numpy.linalg.inv(numpy.array([iHat, jHat, kHat], dtype="float64"))
 
     coords = invRotNorm.dot(coords)
 
