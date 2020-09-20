@@ -9,6 +9,7 @@ from sdssconv.fieldCoords import observedToField, fieldToObserved
 from sdssconv.fieldCoords import focalToField, fieldToFocal, focalPlaneModelDict
 from sdssconv.fieldCoords import focalToWok, wokToFocal, APO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET
 from sdssconv.fieldCoords import wokToTangent, tangentToWok
+from sdssconv.fieldCoords import proj2XYplane
 
 numpy.random.seed(0)
 
@@ -661,7 +662,7 @@ def test_wokTangentCycle():
             dRot = numpy.random.uniform(-20,20)
             elementHeight = 143
             wx,wy,wz = tangentToWok(
-                tx, ty, tz,b,iHat,jHat,kHat,
+                tx,ty,tz,b,iHat,jHat,kHat,
                 elementHeight, scaleFac, dx, dy, dz, dRot
             )
             _tx, _ty, _tz = wokToTangent(
@@ -717,6 +718,54 @@ def test_wokVsFocalSurface():
         # with radius but dont have a good way to test it
         # plotted it and it looks good...
 
+def test_xyProj():
+    rayOrigin = [0,0,1]
+    r = 0.5
+    thetas = numpy.linspace(-numpy.pi, numpy.pi) # put in arctan2 domain
+    x = r*numpy.cos(thetas)
+    y = r*numpy.sin(thetas)
+    z = [0.5]*len(x)
+    px, py, pz = proj2XYplane(x,y,z, rayOrigin)
+    mags = numpy.sqrt(px**2+py**2)
+    assert numpy.max(numpy.abs(mags-1)) < SMALL_NUM
+    assert numpy.max(numpy.abs(pz)) < SMALL_NUM
+
+    _thetas = numpy.arctan2(py, px)
+    assert numpy.max(numpy.abs(_thetas-thetas)) < SMALL_NUM
+
+    r = 1.5
+    x = r*numpy.cos(thetas)
+    y = r*numpy.sin(thetas)
+    z = [-0.5]*len(x)
+    _px, _py, _pz = proj2XYplane(x,y,z, rayOrigin)
+
+    assert numpy.max(numpy.abs(px-_px)) < SMALL_NUM
+    assert numpy.max(numpy.abs(py-_py)) < SMALL_NUM
+    assert numpy.max(numpy.abs(_pz)) < SMALL_NUM
+
+    _thetas = numpy.arctan2(_py, _px)
+    assert numpy.max(numpy.abs(_thetas-thetas)) < SMALL_NUM
+
+    rayOrigin = [0.5, 0.5, 100]
+    x = 0.5
+    y = 0.5
+    z = 1
+    px, py, pz = proj2XYplane(x,y,z, rayOrigin)
+    assert numpy.abs(px-x) < SMALL_NUM
+    assert numpy.abs(py-y) < SMALL_NUM
+    assert numpy.abs(pz) < SMALL_NUM
+
+    rayOrigin = [-1, 0, 2]
+    x = 0
+    y = 0
+    z = 1
+
+    px, py, pz = proj2XYplane(x,y,z, rayOrigin)
+    assert numpy.abs(px-1) < SMALL_NUM
+    assert numpy.abs(py) < SMALL_NUM
+    assert numpy.abs(pz) < SMALL_NUM
+
+
 
 if __name__ == "__main__":
-    test_wokVsFocalSurface()
+    test_xyProj()

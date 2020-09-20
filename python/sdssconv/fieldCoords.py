@@ -1166,8 +1166,10 @@ def wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat,
         b[1] = r*numpy.sin(theta)
 
     isArr = hasattr(xWok, "__len__")
+    calibOff = numpy.array([dx,dy,dz])
     if isArr:
         b = numpy.array([b]*len(xWok)).T
+        calibOff = numpy.array([calibOff]*len(xWok)).T
 
 
 
@@ -1196,6 +1198,8 @@ def wokToTangent(xWok, yWok, zWok, b, iHat, jHat, kHat,
         ])
 
         coords = rotMatZ.dot(coords)
+
+    coords = coords - calibOff
 
     return coords[0], coords[1], coords[2]
 
@@ -1268,8 +1272,16 @@ def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
     jHat = _verify3Vector(jHat, "jHat")
     kHat = _verify3Vector(kHat, "kHat")
 
+    calibOff = numpy.array([dx,dy,dz])
+    isArr = hasattr(xTangent, "__len__")
+    if isArr:
+        calibOff = numpy.array([calibOff]*len(xTangent)).T
+
 
     coords = numpy.array([xTangent,yTangent,zTangent])
+
+    # apply calibration offsets
+    coords = coords + calibOff
 
     # apply rotational calibration
     if dRot != 0:
@@ -1283,17 +1295,17 @@ def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
         coords = rotMatZ.dot(coords)
 
 
-    isArr = hasattr(xTangent, "__len__")
-    if isArr:
-        b = numpy.array([b]*len(xTangent)).T
-    # offset xy plane to focal surface
+
+    # offset xy plane by element height
     if isArr:
         coords[2,:] = coords[2,:] + elementHeight
     else:
         coords[2] = coords[2] + elementHeight
 
     # rotate normal to wok surface at point b
-    invRotNorm = numpy.linalg.inv(numpy.array([iHat, jHat, kHat], dtype="float64"))
+    # invRotNorm = numpy.linalg.inv(numpy.array([iHat, jHat, kHat], dtype="float64"))
+    # transpose is inverse! ortho-normal rows or unit vectors!
+    invRotNorm = numpy.array([iHat, jHat, kHat], dtype="float64").T
 
     coords = invRotNorm.dot(coords)
 
@@ -1308,12 +1320,88 @@ def tangentToWok(xTangent, yTangent, zTangent, b, iHat, jHat, kHat,
         b[0] = r*numpy.cos(theta)
         b[1] = r*numpy.sin(theta)
 
+    if isArr:
+        b = numpy.array([b]*len(xTangent)).T
     coords = coords + b
 
 
     return coords[0], coords[1], coords[2]
 
+PIXEL_SIZE = 13.5 # micron
+CHIP_CENTER = 1024 # unbinned pixels
+MICRONS_PER_MM = 1000
 
+def proj2XYplane(x, y, z, rayOrigin):
+    # for projecting lines to planes...
+    # http://geomalgorithms.com/a05-_intersect-1.html
+    rayOrigin = _verify3Vector(rayOrigin, "rayOrigin")
+    if hasattr(x, "__len__"):
+        rayOrigin = numpy.array([rayOrigin]*len(z), dtype="float64").T
+        x = numpy.array(x, dtype="float64")
+        y = numpy.array(y, dtype="float64")
+        z = numpy.array(z, dtype="float64")
+    xyz = numpy.array([x,y,z], dtype="float64")
+    rayDir = (xyz-rayOrigin)/numpy.linalg.norm(xyz-rayOrigin)
+    negZHat = numpy.array([0, 0, -1])
+    zHat = numpy.array([0, 0, 1])
+    s = negZHat.dot(xyz)/zHat.dot(rayDir)
+    xyzProj = xyz + s*rayDir
+    return xyzProj[0], xyzProj[1], xyzProj[2]
+
+def tangentToGuide(xTangent, yTangent, zTangent=None, rayOrigin=None,
+    xBin=1, yBin=1):
+    """Convert xy Tangent (in mm) to binned pixels.  If zTangent is provided,
+    the point [x,y,z] tangent is projected to the xy plane from rayOrigin.
+
+    Typically ray origin should be the center of focal plane curvature, in
+    tangent coordinates.
+
+    Parameters
+    -------------
+    xTangent: scalar or 1D array
+        x position (mm) in tangent coordinates
+    yTangent: scalar or 1D array
+        y position (mm) in tangent coordinates
+    zTangent: None, scalar, or 1D array
+        z position (mm) in tangent coordinates
+    rayOrigin: None, or a 3-vector
+        x,y,z origin (mm) of ray in tangent coordinates
+    xBin: int
+        x bin factor
+    yBin: int
+        y bin factor
+
+
+    Returns
+    ---------
+    xPixel: scalar or 1D array
+        x position of object in binned pixels
+    yPixel: scalar or 1D array
+        y position of object in binned pixels
+    """
+    isArr = hasattr(xTangent, "__len__")
+    if isArr:
+        xTangent = numpy.array(xTangent, dtype="float64")
+        yTangent = numpy.array(yTangent, dtype="float64")
+
+
+    if zTangent is not None:
+        rayOrigin = _verify3Vector(rayOrigin, "rayOrigin")
+        zTangent = numpy.array(zTangent)
+        if isArr:
+            rayOrigin = numpy.array([rayOrigin]*len(zTangent), dtype="float64").T
+        xyzTangent = numpy.array([xTangent, yTangent, zTangent])
+        rayDir = (xyzTangent-rayOrigin)/numpy.linalg.norm(xyzTangent-rayOrigin)
+        negZHat = numpy.array([0, 0, -1])
+        zHat = numpy.array([0, 0, 1])
+        xyzProj = negZHat.dot(xyzTangent)/zHat.dot(rayDir)
+        xTangent = xyzProj[0]
+        yTangent = xyzProj[1]
+
+    xPix = (1/binX)*(MICRONS_PER_MM/PIXEL_SIZE*xTangent+CHIP_CENTER)
+    yPix = (1/binY)*(MICRONS_PER_MM/PIXEL_SIZE*yTangent+CHIP_CENTER)
+
+    return xPix, yPix
 
 
 
