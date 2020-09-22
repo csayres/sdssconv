@@ -1408,6 +1408,7 @@ def tangentToGuide(xTangent, yTangent, zTangent=None, rayOrigin=None,
     focusOffset: scalar or 1D array
         if zOffset is specified, return the projected distance (mm)
         from the xyzTangent point to the plane of the chip
+        negative for tangent coords below the z=0 plane.
     isOK: boolean or 1D boolean array
         True if point lands within the CCD array, False otherwise
     """

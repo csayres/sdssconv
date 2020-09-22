@@ -883,7 +883,7 @@ def test_tangentGuideCycle():
         focusSide = numpy.random.choice([1, -1])
         xTangent = numpy.random.uniform(-5, 5)
         yTangent = numpy.random.uniform(-5, 5)
-        zTangent = numpy.random.uniform(1, 2)
+        zTangent = focusSide*numpy.random.uniform(1, 2)
         ox = numpy.random.uniform(-1, 1)
         oy = numpy.random.uniform(-1, 1)
         oz = numpy.random.uniform(90,100)
@@ -896,12 +896,13 @@ def test_tangentGuideCycle():
             binX,
             binY
         )
-        assert projDist > 1
+        assert focusSide*projDist > 1
+        assert focusSide*projDist < 2.5
         assert isOK
         _xt, _yt = guideToTangent(xPix, yPix, binX, binY)
 
         dist = numpy.sqrt((xTangent-_xt)**2+(yTangent-_yt)**2 + zTangent**2)
-        assert numpy.abs(dist-projDist) < SMALL_NUM
+        assert numpy.abs(dist-focusSide*projDist) < SMALL_NUM
 
         dir1 = numpy.array([xTangent-ox, yTangent-oy, zTangent-oz])
         dir1 = dir1 / numpy.linalg.norm(dir1)
