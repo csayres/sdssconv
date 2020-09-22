@@ -1332,6 +1332,32 @@ CHIP_CENTER = 1024 # unbinned pixels
 MICRONS_PER_MM = 1000
 
 def proj2XYplane(x, y, z, rayOrigin):
+    """Given a point x, y, z orginating from rayOrigin, project
+    this point onto the xy plane.
+
+    Parameters
+    ------------
+    x: scalar or 1D array
+        x position of point to be projected
+    y: scalar or 1D array
+        y position of point to be projected
+    z: scalar or 1D array
+        z position of point to be projected
+    rayOrigin: 3-vector
+        [x,y,z] origin of ray(s)
+
+    Returns
+    --------
+    xProj: scalar or 1D array
+        projected x value
+    yProj: scalar or 1D array
+        projected y value
+    zProj: scalar or 1D array
+        projected z value (should be zero always!)
+    projDist: scalar or 1D array
+        projected distance (a proxy for something like focus offset)
+    """
+
     # for projecting lines to planes...
     # http://geomalgorithms.com/a05-_intersect-1.html
     rayOrigin = _verify3Vector(rayOrigin, "rayOrigin")
@@ -1344,9 +1370,10 @@ def proj2XYplane(x, y, z, rayOrigin):
     rayDir = (xyz-rayOrigin)/numpy.linalg.norm(xyz-rayOrigin)
     negZHat = numpy.array([0, 0, -1])
     zHat = numpy.array([0, 0, 1])
-    s = negZHat.dot(xyz)/zHat.dot(rayDir)
-    xyzProj = xyz + s*rayDir
-    return xyzProj[0], xyzProj[1], xyzProj[2]
+    projDist = negZHat.dot(xyz)/zHat.dot(rayDir)
+    xyzProj = xyz + projDist*rayDir
+    return xyzProj[0], xyzProj[1], xyzProj[2], projDist
+
 
 def tangentToGuide(xTangent, yTangent, zTangent=None, rayOrigin=None,
     xBin=1, yBin=1):
@@ -1378,6 +1405,11 @@ def tangentToGuide(xTangent, yTangent, zTangent=None, rayOrigin=None,
         x position of object in binned pixels
     yPixel: scalar or 1D array
         y position of object in binned pixels
+    focusOffset: scalar or 1D array
+        if zOffset is specified, return the projected distance (mm)
+        from the xyzTangent point to the plane of the chip
+    isOK: boolean or 1D boolean array
+        True if point lands within the CCD array, False otherwise
     """
     isArr = hasattr(xTangent, "__len__")
     if isArr:
@@ -1387,23 +1419,73 @@ def tangentToGuide(xTangent, yTangent, zTangent=None, rayOrigin=None,
 
     if zTangent is not None:
         rayOrigin = _verify3Vector(rayOrigin, "rayOrigin")
-        zTangent = numpy.array(zTangent)
+        xTangent, yTangent, zTangent, projDist = proj2XYplane(
+            xTangent, yTangent, zTangent, rayOrigin
+        )
+    else:
+        # no projection
         if isArr:
-            rayOrigin = numpy.array([rayOrigin]*len(zTangent), dtype="float64").T
-        xyzTangent = numpy.array([xTangent, yTangent, zTangent])
-        rayDir = (xyzTangent-rayOrigin)/numpy.linalg.norm(xyzTangent-rayOrigin)
-        negZHat = numpy.array([0, 0, -1])
-        zHat = numpy.array([0, 0, 1])
-        xyzProj = negZHat.dot(xyzTangent)/zHat.dot(rayDir)
-        xTangent = xyzProj[0]
-        yTangent = xyzProj[1]
+            projDist = numpy.array([0]*len(xTangent))
+        else:
+            projDist = 0
 
-    xPix = (1/binX)*(MICRONS_PER_MM/PIXEL_SIZE*xTangent+CHIP_CENTER)
-    yPix = (1/binY)*(MICRONS_PER_MM/PIXEL_SIZE*yTangent+CHIP_CENTER)
+    xPix = (1/xBin)*(MICRONS_PER_MM/PIXEL_SIZE*xTangent+CHIP_CENTER)
+    yPix = (1/yBin)*(MICRONS_PER_MM/PIXEL_SIZE*yTangent+CHIP_CENTER)
 
-    return xPix, yPix
+    if isArr:
+        isOK = numpy.array([True]*len(xTangent))
+        badIdx = numpy.argwhere(xPix > 2*CHIP_CENTER)
+        isOK[badIdx] = False
+        badIdx = numpy.argwhere(xPix < 0)
+        isOK[badIdx] = False
+
+        badIdx = numpy.argwhere(yPix > 2*CHIP_CENTER)
+        isOK[badIdx] = False
+        badIdx = numpy.argwhere(yPix < 0)
+        isOK[badIdx] = False
+
+    else:
+        if xPix > 2*CHIP_CENTER:
+            isOK = False
+        elif xPix < 0:
+            isOK = False
+        if yPix > 2*CHIP_CENTER:
+            isOK = False
+        elif yPix < 0:
+            isOK = False
+        else:
+            isOK = True
+
+    return xPix, yPix, projDist, isOK
 
 
+def guideToTangent(xPix, yPix, xBin=1, yBin=1):
+    """Convert xy (binned) guide pixels to xyTangent in mm. Pixels lie in the
+    z = 0 tangent plane.
+
+    Parameters
+    -------------
+    xPixel: scalar or 1D array
+        x position of object in binned pixels
+    yPixel: scalar or 1D array
+        y position of object in binned pixels
+    xBin: int
+        x bin factor
+    yBin: int
+        y bin factor
+
+
+    Returns
+    ---------
+    xTangent: scalar or 1D array
+        x position (mm) in tangent coordinates
+    yTangent: scalar or 1D array
+        y position (mm) in tangent coordinates
+    """
+
+    xTangent = (xPix*xBin-CHIP_CENTER)*PIXEL_SIZE/MICRONS_PER_MM
+    yTangent = (yPix*yBin-CHIP_CENTER)*PIXEL_SIZE/MICRONS_PER_MM
+    return xTangent, yTangent
 
 
 

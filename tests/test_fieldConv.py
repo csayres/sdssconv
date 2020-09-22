@@ -9,7 +9,7 @@ from sdssconv.fieldCoords import observedToField, fieldToObserved
 from sdssconv.fieldCoords import focalToField, fieldToFocal, focalPlaneModelDict
 from sdssconv.fieldCoords import focalToWok, wokToFocal, APO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET
 from sdssconv.fieldCoords import wokToTangent, tangentToWok
-from sdssconv.fieldCoords import proj2XYplane
+from sdssconv.fieldCoords import proj2XYplane, tangentToGuide, guideToTangent, PIXEL_SIZE, CHIP_CENTER
 
 numpy.random.seed(0)
 
@@ -725,7 +725,7 @@ def test_xyProj():
     x = r*numpy.cos(thetas)
     y = r*numpy.sin(thetas)
     z = [0.5]*len(x)
-    px, py, pz = proj2XYplane(x,y,z, rayOrigin)
+    px, py, pz, ps = proj2XYplane(x,y,z, rayOrigin)
     mags = numpy.sqrt(px**2+py**2)
     assert numpy.max(numpy.abs(mags-1)) < SMALL_NUM
     assert numpy.max(numpy.abs(pz)) < SMALL_NUM
@@ -737,7 +737,7 @@ def test_xyProj():
     x = r*numpy.cos(thetas)
     y = r*numpy.sin(thetas)
     z = [-0.5]*len(x)
-    _px, _py, _pz = proj2XYplane(x,y,z, rayOrigin)
+    _px, _py, _pz, _ps = proj2XYplane(x,y,z, rayOrigin)
 
     assert numpy.max(numpy.abs(px-_px)) < SMALL_NUM
     assert numpy.max(numpy.abs(py-_py)) < SMALL_NUM
@@ -750,7 +750,7 @@ def test_xyProj():
     x = 0.5
     y = 0.5
     z = 1
-    px, py, pz = proj2XYplane(x,y,z, rayOrigin)
+    px, py, pz, ps = proj2XYplane(x,y,z, rayOrigin)
     assert numpy.abs(px-x) < SMALL_NUM
     assert numpy.abs(py-y) < SMALL_NUM
     assert numpy.abs(pz) < SMALL_NUM
@@ -760,12 +760,160 @@ def test_xyProj():
     y = 0
     z = 1
 
-    px, py, pz = proj2XYplane(x,y,z, rayOrigin)
+    px, py, pz, ps = proj2XYplane(x,y,z, rayOrigin)
     assert numpy.abs(px-1) < SMALL_NUM
     assert numpy.abs(py) < SMALL_NUM
     assert numpy.abs(pz) < SMALL_NUM
 
 
+def test_tangentToGuide():
+
+    x = PIXEL_SIZE/1000 # one pixel from center in mm
+    y = PIXEL_SIZE/1000 # one pixel from center in mm
+    rayOrigin = [x, y, 100] # straight down projection
+    z = 5
+
+    expectPix = CHIP_CENTER + 1
+    xPix, yPix, focusOff, isOK = tangentToGuide(x,y,z,rayOrigin)
+    assert numpy.abs(xPix - expectPix) < SMALL_NUM
+    assert numpy.abs(yPix - expectPix) < SMALL_NUM
+    assert isOK
+    assert numpy.abs(focusOff - z) < SMALL_NUM
+
+    output = tangentToGuide(
+        [x,x],
+        [y,y],
+        [z,z],
+        rayOrigin
+    )
+
+    for _xPix, _yPix, _focusOff, _isOK in zip(*output):
+        assert numpy.abs(xPix - expectPix) < SMALL_NUM
+        assert numpy.abs(yPix - expectPix) < SMALL_NUM
+        assert isOK
+        assert numpy.abs(focusOff - z) < SMALL_NUM
+
+    xPix, yPix, focusOff, isOK = tangentToGuide(
+        [x,x*10000],  # out of range
+        [y,y],
+        [z,z],
+        rayOrigin
+    )
+
+    assert isOK[0]
+    assert not isOK[1]
+
+    x = -1*PIXEL_SIZE/1000 # one pixel from center in mm
+    y = -1*PIXEL_SIZE/1000 # one pixel from center in mm
+    rayOrigin = [x, y, 100] # straight down projection
+    z = 5
+
+    expectPix = CHIP_CENTER - 1
+    xPix, yPix, focusOff, isOK = tangentToGuide(x,y,z,rayOrigin)
+    assert numpy.abs(xPix - expectPix) < SMALL_NUM
+    assert numpy.abs(yPix - expectPix) < SMALL_NUM
+    assert isOK
+    assert numpy.abs(focusOff - z) < SMALL_NUM
+
+    rayOrigin = [0, 0, 100]
+    _xPix, _yPix, _focusOff, _isOK = tangentToGuide(x,y,z,rayOrigin)
+    # slightly oblique projection
+    assert xPix > _xPix
+    assert yPix > _yPix
+    assert _focusOff > focusOff
+    assert _isOK
+
+    xPix, yPix, focusOff, isOK = tangentToGuide(
+        xTangent = 0,
+        yTangent = 0,
+        xBin = 2,
+        yBin = 2
+        )
+
+    assert (xPix - CHIP_CENTER/2.) < SMALL_NUM
+    assert (yPix - CHIP_CENTER/2.) < SMALL_NUM
+
+
+def test_tangentGuideCycle():
+    # in range pixels
+    xPix = numpy.random.uniform(0,2*CHIP_CENTER, size=300)
+    yPix = numpy.random.uniform(0,2*CHIP_CENTER, size=300)
+    tx, ty = guideToTangent(xPix, yPix)
+    _xPix, _yPix, _focusOff, _isOK = tangentToGuide(tx, ty)
+
+    assert numpy.max(numpy.abs(xPix-_xPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(yPix-_yPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(_focusOff)) < SMALL_NUM
+
+    # out of range pixels
+    xPix = numpy.random.uniform(-2*CHIP_CENTER, 0, size=300)
+    yPix = numpy.random.uniform(-2*CHIP_CENTER, 0, size=300)
+    tx, ty = guideToTangent(xPix, yPix)
+    _xPix, _yPix, _focusOff, _isOK = tangentToGuide(tx, ty)
+
+    assert numpy.max(numpy.abs(xPix-_xPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(yPix-_yPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(_focusOff)) < SMALL_NUM
+    assert True not in _isOK
+
+    # x in range, y out of range pixels
+    xPix = numpy.random.uniform(0, 2*CHIP_CENTER, size=300)
+    yPix = numpy.random.uniform(-2*CHIP_CENTER, 0, size=300)
+    tx, ty = guideToTangent(xPix, yPix)
+    _xPix, _yPix, _focusOff, _isOK = tangentToGuide(tx, ty)
+    assert numpy.max(numpy.abs(xPix-_xPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(yPix-_yPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(_focusOff)) < SMALL_NUM
+    assert True not in _isOK
+
+    # other side of range
+    xPix = numpy.random.uniform(0, 2*CHIP_CENTER, size=300)
+    yPix = numpy.random.uniform(2*CHIP_CENTER, 4*CHIP_CENTER, size=300)
+    tx, ty = guideToTangent(xPix, yPix)
+    _xPix, _yPix, _focusOff, _isOK = tangentToGuide(tx, ty)
+    assert numpy.max(numpy.abs(xPix-_xPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(yPix-_yPix)) < SMALL_NUM
+    assert numpy.max(numpy.abs(_focusOff)) < SMALL_NUM
+    assert True not in _isOK
+
+    # look at projections
+    for seed in range(1000):
+        binX = numpy.random.choice([1,2,3])
+        binY = numpy.random.choice([1,2,3])
+        focusSide = numpy.random.choice([1, -1])
+        xTangent = numpy.random.uniform(-5, 5)
+        yTangent = numpy.random.uniform(-5, 5)
+        zTangent = numpy.random.uniform(1, 2)
+        ox = numpy.random.uniform(-1, 1)
+        oy = numpy.random.uniform(-1, 1)
+        oz = numpy.random.uniform(90,100)
+        rayOrigin = [ox,oy,oz]
+        xPix, yPix, projDist, isOK = tangentToGuide(
+            xTangent,
+            yTangent,
+            zTangent,
+            rayOrigin,
+            binX,
+            binY
+        )
+        assert projDist > 1
+        assert isOK
+        _xt, _yt = guideToTangent(xPix, yPix, binX, binY)
+
+        dist = numpy.sqrt((xTangent-_xt)**2+(yTangent-_yt)**2 + zTangent**2)
+        assert numpy.abs(dist-projDist) < SMALL_NUM
+
+        dir1 = numpy.array([xTangent-ox, yTangent-oy, zTangent-oz])
+        dir1 = dir1 / numpy.linalg.norm(dir1)
+
+        dir2 = numpy.array([_xt-ox, _yt-oy, 0-oz])
+        dir2 = dir2 / numpy.linalg.norm(dir2)
+
+        # ensure they are the same vector!
+        assert numpy.max(numpy.abs(dir1-dir2)) < SMALL_NUM
+
+
+
 
 if __name__ == "__main__":
-    test_xyProj()
+    test_tangentGuideCycle()
