@@ -10,6 +10,7 @@ from sdssconv.fieldCoords import focalToField, fieldToFocal, focalPlaneModelDict
 from sdssconv.fieldCoords import focalToWok, wokToFocal, APO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET
 from sdssconv.fieldCoords import wokToTangent, tangentToWok
 from sdssconv.fieldCoords import proj2XYplane, tangentToGuide, guideToTangent, PIXEL_SIZE, CHIP_CENTER
+from sdssconv.fieldCoords import tangentToPositioner, positionerToTangent
 
 numpy.random.seed(0)
 
@@ -877,6 +878,7 @@ def test_tangentGuideCycle():
     assert True not in _isOK
 
     # look at projections
+    # vary everything make sure round trip works
     for seed in range(1000):
         binX = numpy.random.choice([1,2,3])
         binY = numpy.random.choice([1,2,3])
@@ -914,7 +916,365 @@ def test_tangentGuideCycle():
         assert numpy.max(numpy.abs(dir1-dir2)) < SMALL_NUM
 
 
+def test_tangentToPositioner():
+    angErr = 0.0001 # degrees
+    xBeta = 15
+    yBeta = 0
+
+    xt = 15 + 7.4
+    yt = 0
+    aExpect = 0
+    bExpect = 0
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    xt = 0
+    yt = 15 + 7.4
+    aExpect = 90
+    bExpect = 0
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    xt = -1*(15 + 7.4)
+    yt = 0
+    aExpect = 180
+    bExpect = 0
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    yt = -1*(15 + 7.4)
+    xt = 0
+    aExpect = 270
+    bExpect = 0
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    xt = (7.4 - 15)
+    yt = 0
+    aExpect = 0
+    bExpect = 180
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    xt = 0
+    yt = 7.4 - 15
+    aExpect = 90
+    bExpect = 180
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    xt = -1*(7.4 - 15)
+    yt = 0
+    aExpect = 180
+    bExpect = 180
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+    xt = 0
+    yt =  -1*(7.4 - 15)
+    aExpect = 270
+    bExpect = 180
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+def test_tangentToPositionerArrayInput():
+    angErr = 0.0001 # degrees
+    xBeta = 15
+    yBeta = 0
+
+    xts = [15 + 7.4, 0]
+    yts = [0, 15 + 7.4]
+    aExpects = [0, 90]
+    bExpects = [0, 0]
+
+    az, bs, projs, isOKs = tangentToPositioner(xts, yts, xBeta, yBeta)
+    _xts, _yts = positionerToTangent(az,bs,xBeta,yBeta)
+
+    zipMes = zip(xts, _xts, yts, _yts, az, bs, aExpects, bExpects, isOKs)
+    for xt, _xt, yt, _yt, a, b, aExpect, bExpect, isOK in zipMes:
+        dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+        assert dist < 0.001
+        assert numpy.abs(a-aExpect) < angErr
+        assert numpy.abs(b-bExpect) < angErr
+        assert isOK
+
+def test_tangetnPositionerOutOfRange():
+    xBeta = 15
+    yBeta = 0
+    maxr = 15+7.4
+    minr = 15-7.4
+
+    rts = numpy.random.uniform(maxr, 4*maxr, size=1000)
+    thetas = numpy.random.uniform(0, numpy.pi*2, size=1000)
+    xts = rts*numpy.cos(thetas)
+    yts = rts*numpy.sin(thetas)
+
+    a, b, proj, isOK = tangentToPositioner(xts, yts, xBeta, yBeta)
+    assert numpy.sum(numpy.isfinite(a)) == 0
+    assert numpy.sum(numpy.isfinite(b)) == 0
+    assert numpy.sum(isOK) == 0
+
+    rts = numpy.random.uniform(0, minr, size=1000)
+    thetas = numpy.random.uniform(0, numpy.pi*2, size=1000)
+    xts = rts*numpy.cos(thetas)
+    yts = rts*numpy.sin(thetas)
+
+    a, b, proj, isOK = tangentToPositioner(xts, yts, xBeta, yBeta)
+    assert numpy.sum(numpy.isfinite(a)) == 0
+    assert numpy.sum(numpy.isfinite(b)) == 0
+    assert numpy.sum(isOK) == 0
+
+def test_tangentToPositionerOffCenter():
+    # careful here, there is a degeneracy
+    # near the edges of beta arm travel
+    # where left hand and right hand
+    # solutions are possible... but they
+    # should never be commanded
+
+    angErr = 0.0001 # degrees
+    rBeta = 15
+    offAng = numpy.radians(2) # 2 deg
+
+    # this will fail:
+    # xBeta = rBeta*numpy.cos(-offAng)
+    # yBeta = rBeta*numpy.sin(-offAng)
+
+    xBeta = rBeta*numpy.cos(offAng)
+    yBeta = rBeta*numpy.sin(offAng)
+    xt = 7.4 + xBeta
+    yt = yBeta
+    aExpect = 0
+    bExpect = 0
+
+    a, b, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(a,b,xBeta,yBeta)
+    dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)*1000 # microns
+    assert dist < 0.001
+    assert numpy.abs(a-aExpect) < angErr
+    assert numpy.abs(b-bExpect) < angErr
+    assert isOK
+
+
+def test_positionerTangentCycle():
+    angErr = 0.0001 # degrees
+    maxBetaCoordAngle = 4
+    # hammer ths one because i'm worried about
+    # degenerate solutions, left vs right hand...
+    # because we have off axis targets on the beta arm
+    # on axis targets can't be degenerate i think.
+    npts = 1000000
+    alphas = numpy.random.uniform(0,360, size=npts)
+
+    #!!!! if you do this you'll expose the degeneracy problem !!!!
+    # and the test will fail
+    # betas = numpy.random.uniform(0.99*maxBetaCoordAngle,180-0.99*maxBetaCoordAngle, size=npts)
+    # betas = numpy.random.uniform(0,180, size=npts)
+
+    betas = numpy.random.uniform(maxBetaCoordAngle,180-maxBetaCoordAngle, size=npts)
+
+    # beta arm coords of fiber
+    rBeta = numpy.random.uniform(14.9,15.2, size=npts) # fiber radius in beta arm coords
+    thetaBeta = numpy.random.uniform( # fiber off axis angle
+        numpy.radians(-1*maxBetaCoordAngle),
+        numpy.radians(maxBetaCoordAngle),
+        size=npts
+    )
+    xBeta = rBeta*numpy.cos(thetaBeta)
+    yBeta = rBeta*numpy.sin(thetaBeta)
+
+    xt, yt = positionerToTangent(alphas, betas, xBeta, yBeta)
+    _alphas, _betas, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(_alphas, _betas, xBeta, yBeta)
+
+    maxDist = numpy.max(numpy.abs(numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)))*1000
+    maxAlpha =  numpy.max(numpy.abs(alphas-_alphas))
+    maxBeta =  numpy.max(numpy.abs(betas-_betas))
+    print(maxAlpha, maxBeta)
+    assert maxDist < 0.001
+    assert maxAlpha < angErr
+    assert maxBeta < angErr
+
+
+def test_tangentPositionerCycle():
+    angErr = 0.0001 # degrees
+    maxBetaCoordAngle = numpy.radians(4)
+    npts = 1000000
+    # i think this direction can't suffer the
+    # left/right hand degeneracy, this direction
+    # always yeields the right hand config.
+    maxBetaR = 15.1
+    minBetaR = 14.9
+    # beta arm coords
+    betaRs = numpy.random.uniform(minBetaR, maxBetaR, size=npts)
+    betaThetas = numpy.random.uniform(
+        -1*maxBetaCoordAngle, maxBetaCoordAngle, size=npts
+    )
+    xBeta = betaRs*numpy.cos(betaThetas)
+    yBeta = betaRs*numpy.sin(betaThetas)
+
+    # tangent coords
+    tr = numpy.random.uniform(maxBetaR-7.4 , minBetaR-2, size=npts)
+    tTheta = numpy.random.uniform(0, numpy.pi*2, size=npts)
+    xt = tr*numpy.cos(tTheta)
+    yt = tr*numpy.sin(tTheta)
+    alphas, betas, proj, isOK = tangentToPositioner(xt, yt, xBeta, yBeta)
+    _xt, _yt = positionerToTangent(alphas, betas, xBeta, yBeta)
+    _alphas, _betas, _proj, _isOK = tangentToPositioner(_xt, _yt, xBeta, yBeta)
+
+    maxDist = numpy.max(numpy.abs(numpy.sqrt((xt-_xt)**2+(yt-_yt)**2)))*1000
+    maxAlpha =  numpy.max(numpy.abs(alphas-_alphas))
+    maxBeta =  numpy.max(numpy.abs(betas-_betas))
+    assert maxDist < 0.001
+    assert maxAlpha < angErr
+    assert maxBeta < angErr
+    assert not False in isOK
+    assert not False in _isOK
+
+
+def test_tangentPositionerProjection():
+    angErr = 0.0001
+    for seed in range(100):
+        ox = numpy.random.uniform(-1,1)
+        oy = numpy.random.uniform(-1,1)
+        oz = numpy.random.uniform(900, 1100)
+        rayOrigin = [ox, oy, oz]
+        xBeta = numpy.random.uniform(14.9, 15.1)
+        yBeta = numpy.random.uniform(-0.1, 0.1)
+        rt = numpy.random.uniform(14, 18)
+        rtheta = numpy.random.uniform(0, numpy.pi*2)
+        xt = rt*numpy.cos(rtheta)
+        yt = rt*numpy.sin(rtheta)
+        zt = numpy.random.uniform(-4,4)
+        alpha, beta, proj, isOK = tangentToPositioner(
+            xt, yt, xBeta, yBeta, zTangent=zt, rayOrigin=rayOrigin
+        )
+        _xt, _yt = positionerToTangent(alpha, beta, xBeta, yBeta)
+
+        _alpha, _beta, _proj, _isOK = tangentToPositioner(
+            _xt, _yt, xBeta, yBeta
+        )
+
+        dist = numpy.sqrt((xt-_xt)**2+(yt-_yt)**2 + zt**2)
+        assert numpy.abs(dist-numpy.sign(zt)*proj) < SMALL_NUM
+
+        dir1 = numpy.array([xt-ox, yt-oy, zt-oz])
+        dir1 = dir1 / numpy.linalg.norm(dir1)
+
+        dir2 = numpy.array([_xt-ox, _yt-oy, 0-oz])
+        dir2 = dir2 / numpy.linalg.norm(dir2)
+
+        # ensure they are the same vector!
+        assert numpy.max(numpy.abs(dir1-dir2)) < SMALL_NUM
+
+        assert isOK
+        assert _isOK
+        assert numpy.abs(alpha-_alpha) < angErr
+        assert numpy.abs(beta-_beta) < angErr
+
+
+
+def test_tangentPositionerProjectionArray():
+    # blatant cut and paste from previous test
+    # addint the z tanget coord
+    angErr = 0.0001 # degrees
+    maxBetaCoordAngle = numpy.radians(4)
+    npts = 1000000
+    rayOrigin = [0,0,1000]
+    # i think this direction can't suffer the
+    # left/right hand degeneracy, this direction
+    # always yeields the right hand config.
+    maxBetaR = 15.1
+    minBetaR = 14.9
+    # beta arm coords
+    # betaRs = numpy.random.uniform(minBetaR, maxBetaR, size=npts)
+    # betaThetas = numpy.random.uniform(
+    #     -1*maxBetaCoordAngle, maxBetaCoordAngle, size=npts
+    # )
+    xBeta = numpy.random.uniform(14.9, 15.1, size=npts)
+    yBeta = numpy.random.uniform(-0.1, 0.1, size=npts)
+
+    # xBeta = betaRs*numpy.cos(betaThetas)
+    # yBeta = betaRs*numpy.sin(betaThetas)
+
+    # tangent coords
+    tr = numpy.random.uniform(10 , 20, size=npts)
+    tTheta = numpy.random.uniform(0, numpy.pi*2, size=npts)
+    xt = tr*numpy.cos(tTheta)
+    yt = tr*numpy.sin(tTheta)
+    zt = numpy.random.uniform(-1,1, size=npts)
+
+
+    alphas, betas, proj, isOK = tangentToPositioner(
+        xt, yt, xBeta, yBeta, zTangent=zt, rayOrigin=rayOrigin
+    )
+    # print("out alpha", alphas, betas)
+    _xt, _yt = positionerToTangent(alphas, betas, xBeta[0], yBeta[0])
+
+    _alphas, _betas, _proj, _isOK = tangentToPositioner(
+        _xt, _yt, xBeta[0], yBeta[0] # don't project on this one! its been projected
+    )
+    # print("out alpha2", _alphas, _betas)
+    # print("dists mm, ", numpy.sqrt((xt-_xt)**2+(yt-_yt)**2))
+    # maxDist = numpy.max(numpy.sqrt((xt-_xt)**2+(yt-_yt)**2))*1000
+    maxAlpha =  numpy.max(numpy.abs(alphas-_alphas))
+    maxBeta =  numpy.max(numpy.abs(betas-_betas))
+
+    # assert maxDist < 0.001
+    assert maxAlpha < angErr
+    assert maxBeta < angErr
+    assert not False in isOK
+    assert not False in _isOK
 
 
 if __name__ == "__main__":
-    test_tangentGuideCycle()
+    test_tangentPositionerProjectionArray()
+

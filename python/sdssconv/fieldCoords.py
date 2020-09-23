@@ -841,6 +841,14 @@ LCO_WOK_Z_OFFSET = numpy.mean(
     ]
 ) - POSITIONER_HEIGHT
 
+
+# extracted from solid model
+APO_WOK_Z_OFFSET_ZEMAX = -776.4791 - POSITIONER_HEIGHT
+LCO_WOK_Z_OFFSET_ZEMAX = -993.0665 - POSITIONER_HEIGHT
+
+# print("apo off", APO_WOK_Z_OFFSET, APO_WOK_Z_OFFSET_ZEMAX)
+# print("lco off", LCO_WOK_Z_OFFSET, LCO_WOK_Z_OFFSET_ZEMAX)
+
 # tranlational de-center of wok with focal plane
 # the pointing model may handle this stuff
 # APO_WOK_X_OFFSET = 0
@@ -1488,6 +1496,167 @@ def guideToTangent(xPix, yPix, xBin=1, yBin=1):
     yTangent = (yPix*yBin-CHIP_CENTER)*PIXEL_SIZE/MICRONS_PER_MM
     return xTangent, yTangent
 
+
+def tangentToPositioner(
+    xTangent, yTangent, xBeta, yBeta,
+    zTangent=None, rayOrigin=None, la=7.4
+    ):
+    """
+    Determine alpha/beta positioner angles that place xBeta, yBeta coords in mm
+    at xTangent, yTangent.  If zTangent and rayOrigin are provided, the
+    xyzTangent coords are projected onto the xy plane from the direction of
+    rayOrigin.
+
+    todo: include hooks for positioner non-linearity
+
+    note: may want to catch nan warnings? we want impossible
+    alpha betas to be nans...
+
+    Parameters
+    -------------
+    xTangent: scalar or 1D array
+        x position (mm) in tangent coordinates
+    yTangent: scalar or 1D array
+        y position (mm) in tangent coordinates
+    xBeta: scalar or 1D array
+        x position (mm) in beta arm frame
+    yBeta: scalar or 1D array
+        y position (mm) in beta arm frame
+    zTangent: None, scalar, or 1D array
+        z position (mm) in tangent coordinates
+    rayOrigin: None, or a 3-vector
+        x,y,z origin (mm) of ray in tangent coordinates
+    la: scalar or 1D array
+        length (mm) of alpha arm
+
+    Returns
+    ---------
+    alphaDeg: scalar or 1D array
+        alpha angle in degrees
+    betaDeg: scalar or 1D array
+        beta angle in degrees
+    focusOffset: scalar or 1D array
+        if zOffset is specified, return the projected distance (mm)
+        from the xyzTangent point to the plane of the chip
+        negative for tangent coords below the z=0 plane.
+    isOK: boolean or 1D boolean array
+        True if point physically accessible, False otherwise
+    """
+
+    # projection code copied from guide coord routine
+    # could consolidate
+    isArr = hasattr(xTangent, "__len__")
+    if isArr:
+        xTangent = numpy.array(xTangent, dtype="float64")
+        yTangent = numpy.array(yTangent, dtype="float64")
+
+    if zTangent is not None:
+        rayOrigin = _verify3Vector(rayOrigin, "rayOrigin")
+        xTangent, yTangent, zTangent, projDist = proj2XYplane(
+            xTangent, yTangent, zTangent, rayOrigin
+        )
+    else:
+        # no projection
+        if isArr:
+            projDist = numpy.array([0]*len(xTangent))
+        else:
+            projDist = 0
+
+    # polar coords jive better for this calculation
+    thetaTangent = numpy.arctan2(yTangent, xTangent)
+    rTangentSq = xTangent**2+yTangent**2
+
+    # convert xy Beta to radial coords
+    # the origin of the beta coord system is the
+    # beta axis of rotation
+    thetaBAC = numpy.arctan2(yBeta, xBeta) # radians!
+    rBacSq = xBeta**2+yBeta**2
+
+    gamma = numpy.arccos((la**2+rBacSq-rTangentSq)/(2*la*numpy.sqrt(rBacSq)))
+    xi = numpy.arccos((la**2+rTangentSq-rBacSq)/(2*la*numpy.sqrt(rTangentSq)))
+
+    thetaTangent = numpy.degrees(thetaTangent)
+    thetaBAC = numpy.degrees(thetaBAC)
+    gamma = numpy.degrees(gamma)
+    xi = numpy.degrees(xi)
+
+    alphaDeg = thetaTangent - xi
+    betaDeg = 180 - gamma - thetaBAC
+
+
+
+    # look for nans
+    isOKAlpha = numpy.isfinite(alphaDeg)
+    isOKBeta = numpy.isfinite(betaDeg)
+    isOK = isOKAlpha & isOKBeta
+
+    if not isArr:
+        isOK = bool(isOK)
+
+    # handle wrapping? not sure it's necessary
+    if isArr:
+        idx = numpy.argwhere(alphaDeg < 0)
+        alphaDeg[idx] = alphaDeg[idx] + 360
+        idx = numpy.argwhere(alphaDeg >= 360)
+        alphaDeg[idx] = alphaDeg[idx] - 360
+
+    else:
+        if alphaDeg < 0:
+            alphaDeg += 360
+        if alphaDeg >= 360:
+            alphaDeg -= 360
+
+        # idx = numpy.argwhere(betaDeg < 0)
+        # betaDeg[idx] = betaDeg[idx] + 360
+        # idx = numpy.argwhere(betaDeg >= 360)
+        # betaDeg[idx] = betaDeg[idx] - 360
+
+    return alphaDeg, betaDeg, projDist, isOK
+
+def positionerToTangent(alphaDeg, betaDeg, xBeta, yBeta, la=7.4):
+    """
+    Determine tangent coordinates (mm) of xBeta, yBeta coords in mm
+    from alpha/beta angle.
+
+    todo: include hooks for positioner non-linearity
+
+    Parameters
+    -------------
+    alphaDeg: scalar or 1D array
+        alpha angle in degrees
+    betaDeg: scalar or 1D array
+        beta angle in degrees
+    xBeta: scalar or 1D array
+        x position (mm) in beta arm frame
+    yBeta: scalar or 1D array
+        y position (mm) in beta arm frame
+    la: scalar or 1D array
+        length (mm) of alpha arm
+
+    Returns
+    ---------
+    xTangent: scalar or 1D array
+        x position (mm) in tangent coordinates
+    yTangent: scalar or 1D array
+        y position (mm) in tangent coordinates
+    """
+    # convert xy Beta to radial coords
+    # the origin of the beta coord system is the
+    # beta axis of rotation
+    thetaBAC = numpy.arctan2(yBeta, xBeta) # radians!
+    rBAC = numpy.sqrt(xBeta**2+yBeta**2)
+    alphaRad = numpy.radians(alphaDeg)
+    betaRad = numpy.radians(betaDeg)
+
+    cosAlpha = numpy.cos(alphaRad)
+    sinAlpha = numpy.sin(alphaRad)
+    cosAlphaBeta = numpy.cos(alphaRad+betaRad+thetaBAC)
+    sinAlphaBeta = numpy.sin(alphaRad+betaRad+thetaBAC)
+
+    xTangent = la*cosAlpha + rBAC*cosAlphaBeta
+    yTangent = la*sinAlpha + rBAC*sinAlphaBeta
+
+    return xTangent, yTangent
 
 
 if __name__ == "__main__":
