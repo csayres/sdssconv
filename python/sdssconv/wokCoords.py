@@ -110,6 +110,144 @@ def parseFilledHex():
     return df
 
 
+def canSequence(df):
+    # note keeping columns 1 indexed
+    # sextant 1 can 1
+    out = {}
+
+    # sextant 1
+    out = {}
+    # can 1
+    out[1] = {}
+    hexRow = []
+    hexCol = []
+
+    rows = list(numpy.arange(1,14))
+    cols = list(numpy.arange(1,14)[::-1])
+
+    _rows = list(numpy.arange(2,13)[::-1])
+    rows += _rows
+    cols += [1]*len(_rows)
+
+    out[1]["rows"] = rows
+    out[1]["cols"] = cols
+
+    # can 2
+    out[2] = {}
+    rows = list(numpy.arange(1,12))
+    cols = list(numpy.arange(2,13)[::-1])
+
+    _rows = list(numpy.arange(1,11)[::-1])
+    rows += _rows
+    cols += [2]*len(_rows)
+
+    rows += [1]
+    cols += [1]
+
+    out[2]["rows"] = rows
+    out[2]["cols"] = cols
+
+    # can 3
+    out[3] = {}
+    rows = list(numpy.arange(1,10))
+    cols = list(numpy.arange(3,12)[::-1])
+
+    _rows = list(numpy.arange(1,10))[::-1]
+    rows += _rows
+    cols += [3]*len(_rows)
+
+    _cols = list(numpy.arange(4,8))
+    cols += _cols
+    rows += [1]*len(_cols)
+
+    out[3]["rows"] = rows
+    out[3]["cols"] = cols
+
+    # can 4
+    out[4] = {}
+    rows = list(numpy.arange(1,8))
+    cols = list(numpy.arange(4,11)[::-1])
+
+    _rows = list(numpy.arange(2,8)[::-1])
+    rows += _rows
+    cols += [4]*len(_rows)
+
+    rows += [2,2,2]
+    cols += [5,6,7]
+
+    rows += [1,1]
+    cols += [8,9]
+
+    rows += [2,3,4,5]
+    cols += [8,7,6,5]
+
+    rows += [4,3]
+    cols += [5,5]
+
+    rows += [3]
+    cols += [6]
+
+    out[4]["rows"] = rows
+    out[4]["cols"] = cols
+
+    xPos = {}
+    yPos = {}
+
+    df["sextant"] = numpy.nan
+    df["canbus"] = numpy.nan
+    df["canorder"] = numpy.nan
+
+    _df = df[df["wokType"]=="APO"]
+    for ii in [1,2,3,4]:
+        xPos[ii] = []
+        yPos[ii] = []
+        for row, col in zip(out[ii]["rows"], out[ii]["cols"]):
+            dfRow = _df[(_df["hexCol"] == col) & (_df["hexRow"] == row )]
+            xPos[ii].append(float(dfRow.x))
+            yPos[ii].append(float(dfRow.y))
+
+    for wokType in ["APO", "LCO"]:
+        print("wokType", wokType)
+        _df = df[df["wokType"]==wokType]
+        indices = numpy.array(_df.index)
+        xy = numpy.array(_df[["x", "y"]])
+        argList = []
+        for sextant, rot in enumerate([0, 60, 60*2, 60*3, 60*4, 60*5]):
+            s = numpy.sin(numpy.radians(rot))
+            c = numpy.cos(numpy.radians(rot))
+            rotMat = numpy.array([[c, -s],[s, c]])
+            xyRot = rotMat.dot(xy.T).T
+            print("sextant", sextant)
+
+            for can in [1,2,3,4]:
+                for canOrder, (_xPos,_yPos) in enumerate(zip(xPos[can], yPos[can])):
+                    _xy = numpy.zeros(xyRot.shape)
+                    _xy[:,0] = _xPos
+                    _xy[:,1] = _yPos
+
+                    dist = numpy.linalg.norm(xyRot-_xy, axis=1)
+                    amin = numpy.argmin(dist)
+                    argList.append(amin)
+                    argLoc = indices[amin]
+                    # print("best xy", _xy[amin])
+                    # df.ix[amin, "sextant"] = sextant
+                    # if df.iloc[amin].holeType not in ["ApogeeBoss", "Boss"]:
+                    #     continue
+
+                    df.iloc[argLoc, df.columns.get_loc('sextant')] = sextant + 1
+                    df.iloc[argLoc, df.columns.get_loc('canbus')] = can
+                    df.iloc[argLoc, df.columns.get_loc('canorder')] = canOrder + 1
+            # break
+        print("n set", len(list(set(argList))))
+        print("n list", len(argList))
+
+    # print(numpy.min(df["canorder"]), numpy.max(df["canorder"]))
+    # print(numpy.min(df["sextant"]), numpy.max(df["sextant"]))
+    # import pdb; pdb.set_trace()
+
+
+
+
 def compileDataIGES():
     """Compile information from Ricks filled hex coords, and the
     coords extracted from the IGES data sent from tapemation
@@ -263,9 +401,11 @@ def compileDataIGES():
         yTest = row["y"]
         _ht = row["holeType"]
         _r = row["hexRow"]
-        _c = row["hexCol"]
-        if _r >= 0:
+        _c = row["hexCol"] + 1 # to match ricks drawing? i wanna keep rows columns zero indexed...
+        if _r > 0:
             _hID = "R+"+str(_r)+"C"+str(_c)
+        elif _r==0:
+            _hID = "R"+str(_r)+"C"+str(_c)
         else:
             _hID = "R"+str(_r)+"C"+str(_c)
         # rename hole types from ricks file
@@ -282,7 +422,7 @@ def compileDataIGES():
         holeCounter += 1
 
     # outer fiducial ring search
-    holeCounter = 0
+    holeCounter = 1
     for theta in outerFidTheta:
         _hID = "F"+str(holeCounter)
         for wt, df, radius in zip(["LCO", "APO"], [lcoDF, apoDF], [outerFidLCOradius, outerFidAPOradius]):
@@ -294,8 +434,9 @@ def compileDataIGES():
     # GFA hole search
 
     holeCounter = 0
-    for theta in gfaTheta:
-        _hID = "G"+str(holeCounter)
+    gfaIDs = ["GFA-S3", "GFA-S2", "GFA-S1", "GFA-S6", "GFA-S5", "GFA-S4"]
+    for theta, _hID in zip(gfaTheta, gfaIDs):
+        # _hID = "G"+str(holeCounter)
         for wt, df, radius, pinRadius in zip(["LCO", "APO"], [lcoDF, apoDF], [gfaLCOradius, gfaAPOradius], [gfaLCOPinRadius, gfaAPOPinRadius]):
             xTest = radius*numpy.cos(numpy.radians(theta))
             yTest = radius*numpy.sin(numpy.radians(theta))
@@ -330,6 +471,8 @@ def compileDataIGES():
             "kz": kz,
         }
     )
+
+    canSequence(df)
 
     df.to_csv(os.path.join(os.getenv("SDSSCONV_DIR"), "data/wokCoords.csv"))
     # populate inner hex
@@ -831,6 +974,63 @@ def plotCompiledData():
 
 
     plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="canbus", palette="tab10", data=apo)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("APO")
+    plt.savefig("canRouteAPO.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="canbus", palette="tab10", data=lco)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("LCO")
+    plt.savefig("canRouteLCO.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="sextant", palette="tab10", data=apo)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("APO")
+    plt.savefig("sextantAPO.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="sextant", palette="tab10", data=lco)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("LCO")
+    plt.savefig("sextantLCO.png", dpi=350)
+
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="canorder", data=apo)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("APO")
+    plt.savefig("canorderAPO.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="canorder", data=lco)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("LCO")
+    plt.savefig("canorderLCO.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="hexRow", data=apo)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("APO")
+    plt.savefig("hexRow.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
+    sns.scatterplot(x="x", y="y", hue="hexCol", data=apo)
+    ax = plt.gca()
+    ax.axis("equal")
+    plt.title("APO")
+    plt.savefig("hexCol.png", dpi=350)
+
+    plt.figure(figsize=(8,8))
     x = apo["x"].to_numpy()
     y = apo["y"].to_numpy()
     uv = apo[["ix", "iy"]].to_numpy()
@@ -863,7 +1063,9 @@ def plotCompiledData():
     plt.ylabel("y")
     plt.savefig("wokNumbers.png", dpi=350)
 
-    plt.show()
+
+
+    # plt.show()
 
 if __name__ == "__main__":
     # plotIGES()
