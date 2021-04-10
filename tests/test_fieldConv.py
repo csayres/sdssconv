@@ -652,6 +652,8 @@ def test_wokTangentCycle():
         iHat = row[["ix", "iy", "iz"]]
         jHat = row[["jx", "jy", "jz"]]
         kHat = row[["kx", "ky", "kz"]]
+
+        # import pdb; pdb.set_trace()
         for seed in range(10):
             tx = numpy.random.uniform(-50,50)
             ty = numpy.random.uniform(-50,50)
@@ -1259,14 +1261,15 @@ def test_tangentPositionerProjectionArray():
     # print("out alpha", alphas, betas)
     _xt, _yt = positionerToTangent(alphas, betas, xBeta[0], yBeta[0])
 
+    # don't project on this one! its been projected
     _alphas, _betas, _proj, _isOK = tangentToPositioner(
-        _xt, _yt, xBeta[0], yBeta[0] # don't project on this one! its been projected
+        _xt, _yt, xBeta[0], yBeta[0]
     )
     # print("out alpha2", _alphas, _betas)
     # print("dists mm, ", numpy.sqrt((xt-_xt)**2+(yt-_yt)**2))
     # maxDist = numpy.max(numpy.sqrt((xt-_xt)**2+(yt-_yt)**2))*1000
-    maxAlpha =  numpy.max(numpy.abs(alphas-_alphas))
-    maxBeta =  numpy.max(numpy.abs(betas-_betas))
+    maxAlpha = numpy.max(numpy.abs(alphas-_alphas))
+    maxBeta = numpy.max(numpy.abs(betas-_betas))
 
     # assert maxDist < 0.001
     assert maxAlpha < angErr
@@ -1276,5 +1279,5 @@ def test_tangentPositionerProjectionArray():
 
 
 if __name__ == "__main__":
-    test_tangentPositionerProjectionArray()
+    test_wokTangentCycle()
 
